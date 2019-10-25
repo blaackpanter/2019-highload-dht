@@ -10,6 +10,12 @@ public class Basic implements Topology<String> {
     private final String[] servers;
     private final String me;
 
+    /**
+     * Basic realization of cluster topology.
+     *
+     * @param topology all url in cluster.
+     * @param me       url current server.
+     */
     public Basic(@NotNull final Set<String> topology, @NotNull final String me) {
         servers = new String[topology.size()];
         topology.toArray(servers);
@@ -19,7 +25,7 @@ public class Basic implements Topology<String> {
 
     @Override
     public String primaryFor(@NotNull final ByteBuffer key) {
-        int number = Math.abs(key.hashCode()) % servers.length;
+        final int number = Math.abs(key.hashCode()) % servers.length;
         return servers[number];
     }
 

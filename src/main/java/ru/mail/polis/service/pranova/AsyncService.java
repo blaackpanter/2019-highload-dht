@@ -55,11 +55,10 @@ public class AsyncService extends HttpServer implements Service {
         this.executor = executor;
         this.topology = topology;
         this.clusters = new HashMap<>();
-        for (String node : topology.all()) {
+        for (final String node : topology.all()) {
             if (topology.isMe(node)) {
                 continue;
-            }
-            else clusters.put(node, new HttpClient(new ConnectionString(node + "?timeout=100")));
+            } else clusters.put(node, new HttpClient(new ConnectionString(node + "?timeout=100")));
         }
     }
 
@@ -87,7 +86,7 @@ public class AsyncService extends HttpServer implements Service {
             return;
         }
         final ByteBuffer key = ByteBuffer.wrap(id.getBytes(Charsets.UTF_8));
-        String node = topology.primaryFor(key);
+        final String node = topology.primaryFor(key);
         if (!topology.isMe(node)) {
             asyncAct(session, () -> proxy(node, request));
             return;
@@ -109,7 +108,7 @@ public class AsyncService extends HttpServer implements Service {
         }
     }
 
-    private Response proxy(String node, Request request) throws IOException {
+    private Response proxy(@NotNull final String node, @NotNull final Request request) throws IOException {
         try {
             return clusters.get(node).invoke(request);
         } catch (InterruptedException | PoolException | HttpException e) {

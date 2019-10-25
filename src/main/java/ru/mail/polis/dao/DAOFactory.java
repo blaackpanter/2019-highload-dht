@@ -21,7 +21,6 @@ import java.io.IOException;
 
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.dao.pranova.LSMDao;
-import ru.mail.polis.service.ServiceFactory;
 
 /**
  * Custom {@link DAO} factory.
