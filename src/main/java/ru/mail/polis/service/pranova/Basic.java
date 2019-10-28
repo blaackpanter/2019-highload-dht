@@ -25,7 +25,7 @@ public class Basic implements Topology<String> {
 
     @Override
     public String primaryFor(@NotNull final ByteBuffer key) {
-        final int number = Math.abs(key.hashCode()) % servers.length;
+        final int number = key.hashCode() & (Integer.MAX_VALUE) % servers.length;
         return servers[number];
     }
 
