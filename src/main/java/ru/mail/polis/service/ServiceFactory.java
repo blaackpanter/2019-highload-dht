@@ -18,10 +18,15 @@ package ru.mail.polis.service;
 
 import java.io.IOException;
 import java.util.Set;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.jetbrains.annotations.NotNull;
 
 import ru.mail.polis.dao.DAO;
+import ru.mail.polis.service.pranova.AsyncService;
+import ru.mail.polis.service.pranova.Basic;
 
 /**
  * Constructs {@link Service} instances.
@@ -56,6 +61,9 @@ public final class ServiceFactory {
             throw new IllegalArgumentException("Port out of range");
         }
 
-        throw new IllegalStateException();
+        final Executor executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(),
+                new ThreadFactoryBuilder().setNameFormat("asyncActs").build());
+
+        return new AsyncService(port, dao, executor, new Basic(topology, "http://localhost:" + port));
     }
 }
