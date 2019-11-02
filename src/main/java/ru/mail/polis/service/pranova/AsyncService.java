@@ -285,18 +285,20 @@ public class AsyncService extends HttpServer implements Service {
                     ack++;
                 }
             }
-            correctReplication(session, ack, replicas);
+            final String string = Response.CREATED;
+            correctReplication(session, ack, replicas, string);
         });
     }
 
     private void correctReplication(@NotNull final HttpSession session,
                                     @NotNull final int ack,
-                                    @NotNull final Replicas replicas) {
+                                    @NotNull final Replicas replicas,
+                                    @NotNull final String string) {
         try {
             if (ack < replicas.getAck()) {
                 session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
             } else {
-                session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
+                session.sendResponse(new Response(string, Response.EMPTY));
             }
         } catch (IOException e) {
             try {
@@ -324,7 +326,8 @@ public class AsyncService extends HttpServer implements Service {
                     ack++;
                 }
             }
-            correctReplication(session, ack, replicas);
+            final String string = Response.ACCEPTED;
+            correctReplication(session, ack, replicas, string);
         });
     }
 
