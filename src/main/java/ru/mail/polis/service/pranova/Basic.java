@@ -26,14 +26,14 @@ public class Basic implements Topology<String> {
 
     @Override
     public String primaryFor(@NotNull final ByteBuffer key) {
-        final int number = key.hashCode() & (Integer.MAX_VALUE) % servers.length;
+        final int number = key.hashCode() & Integer.MAX_VALUE % servers.length;
         return servers[number];
     }
 
     @Override
     public Set<String> primaryFor(@NotNull ByteBuffer key, @NotNull Replicas replicas) {
         final Set<String> result = new HashSet<>();
-        int startIndex = key.hashCode() & (Integer.MAX_VALUE) % servers.length;
+        int startIndex = key.hashCode() & Integer.MAX_VALUE % servers.length;
         while (result.size() < replicas.getFrom()) {
             result.add(servers[startIndex]);
             startIndex++;
