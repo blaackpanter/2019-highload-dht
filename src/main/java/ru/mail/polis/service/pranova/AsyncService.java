@@ -37,6 +37,7 @@ import java.util.TreeMap;
 import java.util.Set;
 import java.util.ArrayList;
 import java.util.concurrent.Executor;
+import java.util.stream.Collectors;
 
 public class AsyncService extends HttpServer implements Service {
     private static final String PROXY_HEADER = "Is-Proxy: True";
@@ -338,14 +339,11 @@ public class AsyncService extends HttpServer implements Service {
         }
         executor.execute(() -> {
             try {
-                final List<Response> result = replication(() -> get(key), request, key, replicas);
-                int ack = 0;
-                for (final Response resp : result) {
-                    if (getStatus(resp).equals(Response.OK) || getStatus(resp).equals(Response.NOT_FOUND)) {
-                        ack++;
-                    }
-                }
-                if (ack < replicas.getAck()) {
+                final List<Response> result = replication(() -> get(key), request, key, replicas)
+                        .stream()
+                        .filter(node -> node.getHeaders()[0].equals(Response.OK) || node.getHeaders()[0].equals(Response.ACCEPTED))
+                        .collect(Collectors.toList());
+                if (result.size() < replicas.getAck()) {
                     session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
                     return;
                 }
@@ -368,7 +366,7 @@ public class AsyncService extends HttpServer implements Service {
         });
     }
 
-    private Response forExecGet(Map<Response, Integer> responses) {
+    private Response forExecGet(@NotNull final Map<Response, Integer> responses) {
         Response finalResult = null;
         int maxCount = -1;
         long time = Long.MIN_VALUE;
