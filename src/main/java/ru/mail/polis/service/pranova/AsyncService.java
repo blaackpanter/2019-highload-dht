@@ -37,6 +37,7 @@ import java.util.TreeMap;
 import java.util.Set;
 import java.util.ArrayList;
 import java.util.concurrent.Executor;
+import java.util.stream.Collectors;
 
 public class AsyncService extends HttpServer implements Service {
     private static final String PROXY_HEADER = "Is-Proxy: True";
@@ -309,7 +310,10 @@ public class AsyncService extends HttpServer implements Service {
         });
     }
 
-    private void correctReplication(int ack, @NotNull final Replicas replicas, @NotNull final HttpSession session, String str) {
+    private void correctReplication(@NotNull final int ack,
+                                    @NotNull final Replicas replicas,
+                                    @NotNull final HttpSession session,
+                                    @NotNull final String str) {
         try {
             if (ack < replicas.getAck()) {
                 session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
@@ -336,23 +340,16 @@ public class AsyncService extends HttpServer implements Service {
         }
         executor.execute(() -> {
             try {
-                final List<Response> result = replication(() -> get(key), request, key, replicas);
-                int ack = 0;
-                for (final Response resp : result) {
-                    if (getStatus(resp).equals(Response.OK) || getStatus(resp).equals(Response.NOT_FOUND)) {
-                        ack++;
-                    }
-                }
-                if (ack < replicas.getAck()) {
+                final List<Response> result = replication(() -> get(key), request, key, replicas).stream()
+                        .filter(resp -> getStatus(resp).equals(Response.OK) || getStatus(resp).equals(Response.NOT_FOUND)).collect(Collectors.toList());
+                if (result.size() < replicas.getAck()) {
                     session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
                     return;
                 }
                 final Map<Response, Integer> responses = new TreeMap<>(Comparator.comparing(this::getStatus));
                 result.forEach(resp -> {
-                    if (getStatus(resp).equals(Response.OK) || getStatus(resp).equals(Response.NOT_FOUND)) {
-                        final Integer val = responses.get(resp);
-                        responses.put(resp, val == null ? 0 : val + 1);
-                    }
+                    final Integer val = responses.get(resp);
+                    responses.put(resp, val == null ? 0 : val + 1);
                 });
                 Response finalResult = null;
                 int maxCount = -1;
