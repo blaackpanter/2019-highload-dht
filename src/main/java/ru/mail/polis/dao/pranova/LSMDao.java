@@ -129,9 +129,9 @@ public final class LSMDao implements ExtendedDAO {
      * @throws IOException exception.
      */
     public Iterator<Record> decreasingIterator(@NotNull final ByteBuffer from) throws IOException {
-        final Iterator<Cell> allCells = getIterator(from, FileTable.Order.REVERSE);
-        final Iterator<Cell> alive = Iterators.filter(allCells, cell -> !cell.getValue().isRemoved());
-        return Iterators.transform(alive, cell -> Record.of(cell.getKey(), cell.getValue().getData()));
+        final Iterator<Cell> allCellsD = getIterator(from, FileTable.Order.REVERSE);
+        final Iterator<Cell> aliveD = Iterators.filter(allCellsD, cell -> !cell.getValue().isRemoved());
+        return Iterators.transform(aliveD, cell -> Record.of(cell.getKey(), cell.getValue().getData()));
     }
 
     private Iterator<Cell> getIterator(@NotNull final ByteBuffer from,

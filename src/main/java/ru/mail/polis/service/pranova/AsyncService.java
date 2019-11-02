@@ -42,6 +42,7 @@ public class AsyncService extends HttpServer implements Service {
     private static final String PROXY_HEADER = "Is-Proxy: True";
     private static final String TIMESTAMP = "Timestamp: ";
     private static final String NOT_ENOUGH_REPLICAS = "504 Not Enough Replicas";
+    private static final String IOE_ERR = "IOException on session send error";
     private final ExtendedDAO dao;
     private final Executor executor;
     private static final Logger log = LoggerFactory.getLogger(AsyncService.class);
@@ -97,8 +98,8 @@ public class AsyncService extends HttpServer implements Service {
             return;
         }
         final boolean isProxy = isProxied(request);
-        final Replicas replicasFactor = isProxy ||
-                replicas == null ? Replicas.quorum(clusters.size() + 1) : Replicas.parser(replicas);
+        final Replicas replicasFactor = isProxy
+                || replicas == null ? Replicas.quorum(clusters.size() + 1) : Replicas.parser(replicas);
         if (replicasFactor.getAck() > replicasFactor.getFrom() || replicasFactor.getAck() <= 0) {
             session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
             return;
@@ -228,7 +229,7 @@ public class AsyncService extends HttpServer implements Service {
                 try {
                     session.sendError(Response.INTERNAL_ERROR, "");
                 } catch (IOException ex) {
-                    log.error("IOException on session send error", e);
+                    log.error(IOE_ERR, e);
                 }
             }
         });
@@ -239,14 +240,13 @@ public class AsyncService extends HttpServer implements Service {
     }
 
     /**
-     *Return timestamp for response, -1 if no timestamp.
+     * Return timestamp for response, -1 if no timestamp.
      *
      * @param response input value.
      * @return long value.
      */
     public static long getTimestamp(@NotNull final Response response) {
-        String timestamp = response.getHeader(TIMESTAMP);
-
+        final String timestamp = response.getHeader(TIMESTAMP);
         return timestamp == null ? -1 : Long.parseLong(timestamp);
     }
 
@@ -257,7 +257,7 @@ public class AsyncService extends HttpServer implements Service {
         request.addHeader(PROXY_HEADER);
         final Set<String> nodes = topology.primaryFor(key, replicas);
         final List<Response> result = new ArrayList<>(nodes.size());
-        for (String node : nodes) {
+        for (final String node : nodes) {
             if (topology.isMe(node)) {
                 result.add(action.act());
             } else {
@@ -279,7 +279,7 @@ public class AsyncService extends HttpServer implements Service {
         executor.execute(() -> {
             final List<Response> result = replication(() -> put(key, request), request, key, replicas);
             int ack = 0;
-            for (Response current : result) {
+            for (final Response current : result) {
                 if (getStatus(current).equals(Response.CREATED)) {
                     ack++;
                 }
@@ -288,7 +288,9 @@ public class AsyncService extends HttpServer implements Service {
         });
     }
 
-    private void correctReplication(@NotNull final HttpSession session, @NotNull final int ack, @NotNull final Replicas replicas) {
+    private void correctReplication(@NotNull final HttpSession session,
+                                    @NotNull final int ack,
+                                    @NotNull final Replicas replicas) {
         try {
             if (ack < replicas.getAck()) {
                 session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
@@ -299,7 +301,7 @@ public class AsyncService extends HttpServer implements Service {
             try {
                 session.sendError(Response.INTERNAL_ERROR, "");
             } catch (IOException ex) {
-                log.error("IOException on session send error", e);
+                log.error(IOE_ERR, e);
             }
         }
     }
@@ -314,9 +316,9 @@ public class AsyncService extends HttpServer implements Service {
             return;
         }
         executor.execute(() -> {
-            List<Response> result = replication(() -> delete(key), request, key, replicas);
+            final List<Response> result = replication(() -> delete(key), request, key, replicas);
             int ack = 0;
-            for (Response current : result) {
+            for (final Response current : result) {
                 if (getStatus(current).equals(Response.ACCEPTED)) {
                     ack++;
                 }
@@ -338,7 +340,7 @@ public class AsyncService extends HttpServer implements Service {
             try {
                 final List<Response> result = replication(() -> get(key), request, key, replicas);
                 int ack = 0;
-                for (Response resp : result) {
+                for (final Response resp : result) {
                     if (getStatus(resp).equals(Response.OK) || getStatus(resp).equals(Response.NOT_FOUND)) {
                         ack++;
                     }
@@ -347,33 +349,37 @@ public class AsyncService extends HttpServer implements Service {
                     session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
                     return;
                 }
-                Map<Response, Integer> responses = new TreeMap<>(Comparator.comparing(this::getStatus));
+                final Map<Response, Integer> responses = new TreeMap<>(Comparator.comparing(this::getStatus));
                 result.forEach(resp -> {
                     if (getStatus(resp).equals(Response.OK) || getStatus(resp).equals(Response.NOT_FOUND)) {
                         final Integer val = responses.get(resp);
                         responses.put(resp, val == null ? 0 : val + 1);
                     }
                 });
-                Response finalResult = null;
-                int maxCount = -1;
-                long time = Long.MIN_VALUE;
-                for (Map.Entry<Response, Integer> entry : responses.entrySet()) {
-                    if (entry.getValue() >= maxCount && getTimestamp(entry.getKey()) > time) {
-                        time = getTimestamp(entry.getKey());
-                        maxCount = entry.getValue();
-                        finalResult = entry.getKey();
-                    }
-                }
-                session.sendResponse(finalResult);
+                session.sendResponse(forExecGet(responses));
             } catch (IOException e) {
                 try {
                     log.error("get", e);
                     session.sendError(Response.INTERNAL_ERROR, "");
                 } catch (IOException ex) {
-                    log.error("IOException on session send error", e);
+                    log.error(IOE_ERR, e);
                 }
             }
         });
+    }
+
+    private Response forExecGet(Map<Response, Integer> responses) {
+        Response finalResult = null;
+        int maxCount = -1;
+        long time = Long.MIN_VALUE;
+        for (final Map.Entry<Response, Integer> entry : responses.entrySet()) {
+            if (entry.getValue() >= maxCount && getTimestamp(entry.getKey()) > time) {
+                time = getTimestamp(entry.getKey());
+                maxCount = entry.getValue();
+                finalResult = entry.getKey();
+            }
+        }
+        return finalResult;
     }
 
     private String getStatus(@NotNull final Response response) {
