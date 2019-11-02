@@ -98,7 +98,8 @@ public class AsyncService extends HttpServer implements Service {
             return;
         }
         final boolean isProxy = isProxied(request);
-        final Replicas replicasFactor = isProxy || replicas == null ? Replicas.quorum(clusters.size() + 1) : Replicas.parser(replicas);
+        final Replicas replicasFactor = isProxy
+                || replicas == null ? Replicas.quorum(clusters.size() + 1) : Replicas.parser(replicas);
         if (replicasFactor.getAck() > replicasFactor.getFrom() || replicasFactor.getAck() <= 0) {
             session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
             return;
@@ -245,7 +246,7 @@ public class AsyncService extends HttpServer implements Service {
      * @return long value.
      */
     public static long getTimestamp(@NotNull final Response response) {
-        String timestamp = response.getHeader(TIMESTAMP);
+        final String timestamp = response.getHeader(TIMESTAMP);
         return timestamp == null ? -1 : Long.parseLong(timestamp);
     }
 
@@ -256,7 +257,7 @@ public class AsyncService extends HttpServer implements Service {
         request.addHeader(PROXY_HEADER);
         final Set<String> nodes = topology.primaryFor(key, replicas);
         final List<Response> result = new ArrayList<>(nodes.size());
-        for (String node : nodes) {
+        for (final String node : nodes) {
             if (topology.isMe(node)) {
                 result.add(action.act());
             } else {
@@ -278,26 +279,12 @@ public class AsyncService extends HttpServer implements Service {
         executor.execute(() -> {
             final List<Response> result = replication(() -> put(key, request), request, key, replicas);
             int ack = 0;
-            for (Response current : result) {
+            for (final Response current : result) {
                 if (getStatus(current).equals(Response.CREATED)) {
                     ack++;
                 }
             }
-            try {
-                if (ack < replicas.getAck()) {
-
-                    session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
-
-                } else {
-                    session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
-                }
-            } catch (IOException e) {
-                try {
-                    session.sendError(Response.INTERNAL_ERROR, "");
-                } catch (IOException ex) {
-                    log.error(IOE_ERR, e);
-                }
-            }
+            correctReplication(ack, replicas, session, Response.CREATED);
         });
     }
 
@@ -311,27 +298,31 @@ public class AsyncService extends HttpServer implements Service {
             return;
         }
         executor.execute(() -> {
-            List<Response> result = replication(() -> delete(key), request, key, replicas);
+            final List<Response> result = replication(() -> delete(key), request, key, replicas);
             int ack = 0;
-            for (Response current : result) {
+            for (final Response current : result) {
                 if (getStatus(current).equals(Response.ACCEPTED)) {
                     ack++;
                 }
             }
-            try {
-                if (ack < replicas.getAck()) {
-                    session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
-                } else {
-                    session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
-                }
-            } catch (IOException e) {
-                try {
-                    session.sendError(Response.INTERNAL_ERROR, "");
-                } catch (IOException ex) {
-                    log.error(IOE_ERR, e);
-                }
-            }
+            correctReplication(ack, replicas, session, Response.ACCEPTED);
         });
+    }
+
+    private void correctReplication(int ack, @NotNull final Replicas replicas, @NotNull final HttpSession session, String str) {
+        try {
+            if (ack < replicas.getAck()) {
+                session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
+            } else {
+                session.sendResponse(new Response(str, Response.EMPTY));
+            }
+        } catch (IOException e) {
+            try {
+                session.sendError(Response.INTERNAL_ERROR, "");
+            } catch (IOException ex) {
+                log.error(IOE_ERR, e);
+            }
+        }
     }
 
     private void execGet(@NotNull final HttpSession session,
@@ -347,7 +338,7 @@ public class AsyncService extends HttpServer implements Service {
             try {
                 final List<Response> result = replication(() -> get(key), request, key, replicas);
                 int ack = 0;
-                for (Response resp : result) {
+                for (final Response resp : result) {
                     if (getStatus(resp).equals(Response.OK) || getStatus(resp).equals(Response.NOT_FOUND)) {
                         ack++;
                     }
@@ -356,7 +347,7 @@ public class AsyncService extends HttpServer implements Service {
                     session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
                     return;
                 }
-                Map<Response, Integer> responses = new TreeMap<>(Comparator.comparing(this::getStatus));
+                final Map<Response, Integer> responses = new TreeMap<>(Comparator.comparing(this::getStatus));
                 result.forEach(resp -> {
                     if (getStatus(resp).equals(Response.OK) || getStatus(resp).equals(Response.NOT_FOUND)) {
                         final Integer val = responses.get(resp);
@@ -366,7 +357,7 @@ public class AsyncService extends HttpServer implements Service {
                 Response finalResult = null;
                 int maxCount = -1;
                 long time = Long.MIN_VALUE;
-                for (Map.Entry<Response, Integer> entry : responses.entrySet()) {
+                for (final Map.Entry<Response, Integer> entry : responses.entrySet()) {
                     if (entry.getValue() >= maxCount && getTimestamp(entry.getKey()) > time) {
                         time = getTimestamp(entry.getKey());
                         maxCount = entry.getValue();
