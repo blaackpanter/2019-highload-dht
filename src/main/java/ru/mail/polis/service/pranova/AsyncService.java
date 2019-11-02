@@ -37,7 +37,6 @@ import java.util.TreeMap;
 import java.util.Set;
 import java.util.ArrayList;
 import java.util.concurrent.Executor;
-import java.util.stream.Collectors;
 
 public class AsyncService extends HttpServer implements Service {
     private static final String PROXY_HEADER = "Is-Proxy: True";
@@ -99,8 +98,7 @@ public class AsyncService extends HttpServer implements Service {
             return;
         }
         final boolean isProxy = isProxied(request);
-        final Replicas replicasFactor = isProxy
-                || replicas == null ? Replicas.quorum(clusters.size() + 1) : Replicas.parser(replicas);
+        final Replicas replicasFactor = isProxy || replicas == null ? Replicas.quorum(clusters.size() + 1) : Replicas.parser(replicas);
         if (replicasFactor.getAck() > replicasFactor.getFrom() || replicasFactor.getAck() <= 0) {
             session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
             return;
@@ -247,7 +245,7 @@ public class AsyncService extends HttpServer implements Service {
      * @return long value.
      */
     public static long getTimestamp(@NotNull final Response response) {
-        final String timestamp = response.getHeader(TIMESTAMP);
+        String timestamp = response.getHeader(TIMESTAMP);
         return timestamp == null ? -1 : Long.parseLong(timestamp);
     }
 
@@ -258,7 +256,7 @@ public class AsyncService extends HttpServer implements Service {
         request.addHeader(PROXY_HEADER);
         final Set<String> nodes = topology.primaryFor(key, replicas);
         final List<Response> result = new ArrayList<>(nodes.size());
-        for (final String node : nodes) {
+        for (String node : nodes) {
             if (topology.isMe(node)) {
                 result.add(action.act());
             } else {
@@ -280,33 +278,27 @@ public class AsyncService extends HttpServer implements Service {
         executor.execute(() -> {
             final List<Response> result = replication(() -> put(key, request), request, key, replicas);
             int ack = 0;
-            for (final Response current : result) {
+            for (Response current : result) {
                 if (getStatus(current).equals(Response.CREATED)) {
                     ack++;
                 }
             }
-            final String string = Response.CREATED;
-            correctReplication(session, ack, replicas, string);
-        });
-    }
-
-    private void correctReplication(@NotNull final HttpSession session,
-                                    @NotNull final int ack,
-                                    @NotNull final Replicas replicas,
-                                    @NotNull final String string) {
-        try {
-            if (ack < replicas.getAck()) {
-                session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
-            } else {
-                session.sendResponse(new Response(string, Response.EMPTY));
-            }
-        } catch (IOException e) {
             try {
-                session.sendError(Response.INTERNAL_ERROR, "");
-            } catch (IOException ex) {
-                log.error(IOE_ERR, e);
+                if (ack < replicas.getAck()) {
+
+                    session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
+
+                } else {
+                    session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
+                }
+            } catch (IOException e) {
+                try {
+                    session.sendError(Response.INTERNAL_ERROR, "");
+                } catch (IOException ex) {
+                    log.error(IOE_ERR, e);
+                }
             }
-        }
+        });
     }
 
     private void execDelete(@NotNull final HttpSession session,
@@ -319,15 +311,26 @@ public class AsyncService extends HttpServer implements Service {
             return;
         }
         executor.execute(() -> {
-            final List<Response> result = replication(() -> delete(key), request, key, replicas);
+            List<Response> result = replication(() -> delete(key), request, key, replicas);
             int ack = 0;
-            for (final Response current : result) {
+            for (Response current : result) {
                 if (getStatus(current).equals(Response.ACCEPTED)) {
                     ack++;
                 }
             }
-            final String string = Response.ACCEPTED;
-            correctReplication(session, ack, replicas, string);
+            try {
+                if (ack < replicas.getAck()) {
+                    session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
+                } else {
+                    session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
+                }
+            } catch (IOException e) {
+                try {
+                    session.sendError(Response.INTERNAL_ERROR, "");
+                } catch (IOException ex) {
+                    log.error(IOE_ERR, e);
+                }
+            }
         });
     }
 
@@ -342,23 +345,35 @@ public class AsyncService extends HttpServer implements Service {
         }
         executor.execute(() -> {
             try {
-                final List<Response> result = replication(() -> get(key), request, key, replicas)
-                        .stream()
-                        .filter(node -> node.getHeaders()[0].equals(Response.OK)
-                                || node.getHeaders()[0].equals(Response.ACCEPTED))
-                        .collect(Collectors.toList());
-                if (result.size() < replicas.getAck()) {
+                final List<Response> result = replication(() -> get(key), request, key, replicas);
+                int ack = 0;
+                for (Response resp : result) {
+                    if (getStatus(resp).equals(Response.OK) || getStatus(resp).equals(Response.NOT_FOUND)) {
+                        ack++;
+                    }
+                }
+                if (ack < replicas.getAck()) {
                     session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
                     return;
                 }
-                final Map<Response, Integer> responses = new TreeMap<>(Comparator.comparing(this::getStatus));
+                Map<Response, Integer> responses = new TreeMap<>(Comparator.comparing(this::getStatus));
                 result.forEach(resp -> {
                     if (getStatus(resp).equals(Response.OK) || getStatus(resp).equals(Response.NOT_FOUND)) {
                         final Integer val = responses.get(resp);
                         responses.put(resp, val == null ? 0 : val + 1);
                     }
                 });
-                session.sendResponse(forExecGet(responses));
+                Response finalResult = null;
+                int maxCount = -1;
+                long time = Long.MIN_VALUE;
+                for (Map.Entry<Response, Integer> entry : responses.entrySet()) {
+                    if (entry.getValue() >= maxCount && getTimestamp(entry.getKey()) > time) {
+                        time = getTimestamp(entry.getKey());
+                        maxCount = entry.getValue();
+                        finalResult = entry.getKey();
+                    }
+                }
+                session.sendResponse(finalResult);
             } catch (IOException e) {
                 try {
                     log.error("get", e);
@@ -368,20 +383,6 @@ public class AsyncService extends HttpServer implements Service {
                 }
             }
         });
-    }
-
-    private Response forExecGet(@NotNull final Map<Response, Integer> responses) {
-        Response finalResult = null;
-        int maxCount = -1;
-        long time = Long.MIN_VALUE;
-        for (final Map.Entry<Response, Integer> entry : responses.entrySet()) {
-            if (entry.getValue() >= maxCount && getTimestamp(entry.getKey()) > time) {
-                time = getTimestamp(entry.getKey());
-                maxCount = entry.getValue();
-                finalResult = entry.getKey();
-            }
-        }
-        return finalResult;
     }
 
     private String getStatus(@NotNull final Response response) {
