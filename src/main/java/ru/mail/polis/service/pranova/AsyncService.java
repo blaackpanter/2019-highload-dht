@@ -341,7 +341,8 @@ public class AsyncService extends HttpServer implements Service {
             try {
                 final List<Response> result = replication(() -> get(key), request, key, replicas)
                         .stream()
-                        .filter(node -> node.getHeaders()[0].equals(Response.OK) || node.getHeaders()[0].equals(Response.ACCEPTED))
+                        .filter(node -> node.getHeaders()[0].equals(Response.OK)
+                                || node.getHeaders()[0].equals(Response.ACCEPTED))
                         .collect(Collectors.toList());
                 if (result.size() < replicas.getAck()) {
                     session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
