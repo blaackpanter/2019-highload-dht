@@ -146,22 +146,7 @@ class Replica {
                     session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
                     return;
                 }
-                final Map<Response, Integer> responses = new TreeMap<>(Comparator.comparing(this::getStatus));
-                result.forEach(resp -> {
-                    final Integer val = responses.get(resp);
-                    responses.put(resp, val == null ? 0 : val + 1);
-                });
-                Response finalResult = null;
-                int maxCount = -1;
-                long time = Long.MIN_VALUE;
-                for (final Map.Entry<Response, Integer> entry : responses.entrySet()) {
-                    if (entry.getValue() >= maxCount && getTimestamp(entry.getKey()) > time) {
-                        time = getTimestamp(entry.getKey());
-                        maxCount = entry.getValue();
-                        finalResult = entry.getKey();
-                    }
-                }
-                session.sendResponse(finalResult);
+                session.sendResponse(mergeResponses(result));
             } catch (IOException e) {
                 try {
                     log.error("get", e);
@@ -171,6 +156,25 @@ class Replica {
                 }
             }
         });
+    }
+
+    private Response mergeResponses(List<Response> result) {
+        final Map<Response, Integer> responses = new TreeMap<>(Comparator.comparing(this::getStatus));
+        result.forEach(resp -> {
+            final Integer val = responses.get(resp);
+            responses.put(resp, val == null ? 0 : val + 1);
+        });
+        Response finalResult = null;
+        int maxCount = -1;
+        long time = Long.MIN_VALUE;
+        for (final Map.Entry<Response, Integer> entry : responses.entrySet()) {
+            if (entry.getValue() >= maxCount && getTimestamp(entry.getKey()) > time) {
+                time = getTimestamp(entry.getKey());
+                maxCount = entry.getValue();
+                finalResult = entry.getKey();
+            }
+        }
+        return finalResult;
     }
 
     private void asyncAct(@NotNull final HttpSession session,
