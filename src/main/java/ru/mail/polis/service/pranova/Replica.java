@@ -158,7 +158,7 @@ class Replica {
         });
     }
 
-    private Response mergeResponses(List<Response> result) {
+    private Response mergeResponses(@NotNull final List<Response> result) {
         final Map<Response, Integer> responses = new TreeMap<>(Comparator.comparing(this::getStatus));
         result.forEach(resp -> {
             final Integer val = responses.get(resp);
