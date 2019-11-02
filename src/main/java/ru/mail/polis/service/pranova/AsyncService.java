@@ -26,7 +26,16 @@ import ru.mail.polis.service.Service;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.*;
+
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.List;
+import java.util.Comparator;
+import java.util.TreeMap;
+import java.util.Set;
+import java.util.ArrayList;
 import java.util.concurrent.Executor;
 
 public class AsyncService extends HttpServer implements Service {
@@ -88,7 +97,8 @@ public class AsyncService extends HttpServer implements Service {
             return;
         }
         final boolean isProxy = isProxied(request);
-        final Replicas replicasFactor = isProxy || replicas == null ? Replicas.quorum(clusters.size() + 1) : Replicas.parser(replicas);
+        final Replicas replicasFactor = isProxy ||
+                replicas == null ? Replicas.quorum(clusters.size() + 1) : Replicas.parser(replicas);
         if (replicasFactor.getAck() > replicasFactor.getFrom() || replicasFactor.getAck() <= 0) {
             session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
             return;
@@ -228,6 +238,12 @@ public class AsyncService extends HttpServer implements Service {
         return request.getHeader(PROXY_HEADER) != null;
     }
 
+    /**
+     *Return timestamp for response, -1 if no timestamp.
+     *
+     * @param response input value.
+     * @return long value.
+     */
     public static long getTimestamp(@NotNull final Response response) {
         String timestamp = response.getHeader(TIMESTAMP);
 
@@ -268,20 +284,24 @@ public class AsyncService extends HttpServer implements Service {
                     ack++;
                 }
             }
-            try {
-                if (ack < replicas.getAck()) {
-                    session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
-                } else {
-                    session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
-                }
-            } catch (IOException e) {
-                try {
-                    session.sendError(Response.INTERNAL_ERROR, "");
-                } catch (IOException ex) {
-                    log.error("IOException on session send error", e);
-                }
-            }
+            correctReplication(session, ack, replicas);
         });
+    }
+
+    private void correctReplication(@NotNull final HttpSession session, @NotNull final int ack, @NotNull final Replicas replicas) {
+        try {
+            if (ack < replicas.getAck()) {
+                session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
+            } else {
+                session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
+            }
+        } catch (IOException e) {
+            try {
+                session.sendError(Response.INTERNAL_ERROR, "");
+            } catch (IOException ex) {
+                log.error("IOException on session send error", e);
+            }
+        }
     }
 
     private void execDelete(@NotNull final HttpSession session,
@@ -301,19 +321,7 @@ public class AsyncService extends HttpServer implements Service {
                     ack++;
                 }
             }
-            try {
-                if (ack < replicas.getAck()) {
-                    session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
-                } else {
-                    session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
-                }
-            } catch (IOException e) {
-                try {
-                    session.sendError(Response.INTERNAL_ERROR, "");
-                } catch (IOException ex) {
-                    log.error("IOException on session send error", e);
-                }
-            }
+            correctReplication(session, ack, replicas);
         });
     }
 

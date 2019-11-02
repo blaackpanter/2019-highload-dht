@@ -5,7 +5,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
-public class Replicas {
+public final class Replicas {
     private final int ack;
     private final int from;
 

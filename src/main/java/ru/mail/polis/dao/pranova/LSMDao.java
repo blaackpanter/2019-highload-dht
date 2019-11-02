@@ -4,7 +4,6 @@ import com.google.common.collect.Iterators;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import ru.mail.polis.dao.DAO;
 import ru.mail.polis.dao.Iters;
 import ru.mail.polis.Record;
 
@@ -18,7 +17,13 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.*;
+
+import java.util.EnumSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NavigableMap;
+import java.util.ArrayList;
+import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public final class LSMDao implements ExtendedDAO {
@@ -116,6 +121,13 @@ public final class LSMDao implements ExtendedDAO {
         }
     }
 
+    /**
+     * Iterator from end.
+     *
+     * @param from input parameter.
+     * @return iterator with record.
+     * @throws IOException exception.
+     */
     public Iterator<Record> decreasingIterator(@NotNull final ByteBuffer from) throws IOException {
         final Iterator<Cell> allCells = getIterator(from, FileTable.Order.REVERSE);
         final Iterator<Cell> alive = Iterators.filter(allCells, cell -> !cell.getValue().isRemoved());
@@ -136,12 +148,11 @@ public final class LSMDao implements ExtendedDAO {
         filesIterators.add(order == FileTable.Order.DIRECT
                 ? memTable.iterator(from)
                 : memTable.decreasingIterator(from));
-        final Iterator<Cell> alive = getCellsIterator(filesIterators);
-        return alive;
+        return getCellsIterator(filesIterators);
     }
 
     @Override
-    public Cell getCell(@NotNull ByteBuffer key) throws IOException {
+    public Cell getCell(@NotNull final ByteBuffer key) throws IOException {
         final Iterator<Cell> iter = getIterator(key, FileTable.Order.DIRECT);
         if (!iter.hasNext()) {
             throw new NoSuchElementException("Not found");

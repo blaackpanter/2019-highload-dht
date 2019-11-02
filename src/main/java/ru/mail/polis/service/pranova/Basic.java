@@ -31,7 +31,7 @@ public class Basic implements Topology<String> {
     }
 
     @Override
-    public Set<String> primaryFor(@NotNull ByteBuffer key, @NotNull Replicas replicas) {
+    public Set<String> primaryFor(@NotNull final ByteBuffer key, @NotNull final Replicas replicas) {
         final Set<String> result = new HashSet<>();
         int startIndex = key.hashCode() & Integer.MAX_VALUE % servers.length;
         while (result.size() < replicas.getFrom()) {
