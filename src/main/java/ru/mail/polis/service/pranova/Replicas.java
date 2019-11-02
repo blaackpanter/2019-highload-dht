@@ -1,11 +1,13 @@
 package ru.mail.polis.service.pranova;
 
+import com.google.common.base.Splitter;
 import org.jetbrains.annotations.NotNull;
+
+import java.util.List;
 
 public class Replicas {
     private final int ack;
     private final int from;
-    private static Replicas quorum;
 
     private Replicas(final int ack, final int from) {
         this.ack = ack;
@@ -13,15 +15,12 @@ public class Replicas {
     }
 
     public static Replicas quorum(final int count) {
-        if (quorum == null) {
-            quorum = new Replicas(count / 2 + 1, count);
-        }
-        return quorum;
+        return new Replicas(count / 2 + 1, count);
     }
 
     public static Replicas parser(@NotNull final String replicas) {
-        final String[] params = replicas.split("/");
-        return new Replicas(Integer.parseInt(params[0]), Integer.parseInt(params[1]));
+        final List<String> params = Splitter.on('/').splitToList(replicas);
+        return new Replicas(Integer.parseInt(params.get(0)), Integer.parseInt(params.get(1)));
     }
 
     public int getAck() {

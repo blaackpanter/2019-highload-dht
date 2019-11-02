@@ -123,7 +123,7 @@ public final class LSMDao implements ExtendedDAO {
     }
 
     private Iterator<Cell> getIterator(@NotNull final ByteBuffer from,
-                                         @NotNull final FileTable.Order order)
+                                       @NotNull final FileTable.Order order)
             throws IOException {
         final List<Iterator<Cell>> filesIterators = new ArrayList<>();
 

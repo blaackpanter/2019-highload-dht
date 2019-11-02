@@ -1,9 +1,7 @@
 package ru.mail.polis.service.pranova;
 
-import ch.qos.logback.classic.joran.ReconfigureOnChangeTask;
 import com.google.common.base.Charsets;
 
-import com.google.protobuf.MapEntry;
 import one.nio.http.HttpClient;
 import one.nio.http.HttpServer;
 import one.nio.http.HttpSession;
@@ -22,7 +20,6 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.mail.polis.Record;
-import ru.mail.polis.dao.DAO;
 import ru.mail.polis.dao.pranova.Cell;
 import ru.mail.polis.dao.pranova.ExtendedDAO;
 import ru.mail.polis.service.Service;
@@ -97,11 +94,6 @@ public class AsyncService extends HttpServer implements Service {
             return;
         }
         final ByteBuffer key = ByteBuffer.wrap(id.getBytes(Charsets.UTF_8));
-        final String node = topology.primaryFor(key);
-        if (!topology.isMe(node)) {
-            asyncAct(session, () -> proxy(node, request));
-            return;
-        }
         final var method = request.getMethod();
         switch (method) {
             case Request.METHOD_GET:
@@ -233,14 +225,13 @@ public class AsyncService extends HttpServer implements Service {
     }
 
     private boolean isProxied(@NotNull final Request request) {
-        System.out.println("is proxy");
         return request.getHeader(PROXY_HEADER) != null;
     }
 
     public static long getTimestamp(@NotNull final Response response) {
         String timestamp = response.getHeader(TIMESTAMP);
 
-        return timestamp == null ? Long.MIN_VALUE : Long.parseLong(timestamp);
+        return timestamp == null ? -1 : Long.parseLong(timestamp);
     }
 
     private List<Response> replication(@NotNull final Action action,
@@ -277,11 +268,17 @@ public class AsyncService extends HttpServer implements Service {
                     ack++;
                 }
             }
-            if (ack < replicas.getAck()) {
-                try {
+            try {
+                if (ack < replicas.getAck()) {
                     session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
-                } catch (IOException e) {
-                    e.printStackTrace();
+                } else {
+                    session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
+                }
+            } catch (IOException e) {
+                try {
+                    session.sendError(Response.INTERNAL_ERROR, "");
+                } catch (IOException ex) {
+                    log.error("IOException on session send error", e);
                 }
             }
         });
@@ -304,11 +301,17 @@ public class AsyncService extends HttpServer implements Service {
                     ack++;
                 }
             }
-            if (ack < replicas.getAck()) {
-                try {
+            try {
+                if (ack < replicas.getAck()) {
                     session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
-                } catch (IOException e) {
-                    e.printStackTrace();
+                } else {
+                    session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
+                }
+            } catch (IOException e) {
+                try {
+                    session.sendError(Response.INTERNAL_ERROR, "");
+                } catch (IOException ex) {
+                    log.error("IOException on session send error", e);
                 }
             }
         });
@@ -325,21 +328,29 @@ public class AsyncService extends HttpServer implements Service {
         }
         executor.execute(() -> {
             try {
-                final List<Response> result =  replication(() -> put(key, request), request, key, replicas);
-                if (result.size() < replicas.getAck()) {
+                final List<Response> result = replication(() -> get(key), request, key, replicas);
+                int ack = 0;
+                for (Response resp : result) {
+                    if (getStatus(resp).equals(Response.OK) || getStatus(resp).equals(Response.NOT_FOUND)) {
+                        ack++;
+                    }
+                }
+                if (ack < replicas.getAck()) {
                     session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
                     return;
                 }
-                Map<Response, Integer> responses = new TreeMap<>();
+                Map<Response, Integer> responses = new TreeMap<>(Comparator.comparing(this::getStatus));
                 result.forEach(resp -> {
-                    final Integer val = responses.get(resp);
-                    responses.put(resp, val == null ? 0 : val + 1);
+                    if (getStatus(resp).equals(Response.OK) || getStatus(resp).equals(Response.NOT_FOUND)) {
+                        final Integer val = responses.get(resp);
+                        responses.put(resp, val == null ? 0 : val + 1);
+                    }
                 });
                 Response finalResult = null;
                 int maxCount = -1;
-                long time = 1;
+                long time = Long.MIN_VALUE;
                 for (Map.Entry<Response, Integer> entry : responses.entrySet()) {
-                    if (entry.getValue() > maxCount & getTimestamp(entry.getKey()) > time) {
+                    if (entry.getValue() >= maxCount && getTimestamp(entry.getKey()) > time) {
                         time = getTimestamp(entry.getKey());
                         maxCount = entry.getValue();
                         finalResult = entry.getKey();
@@ -347,7 +358,12 @@ public class AsyncService extends HttpServer implements Service {
                 }
                 session.sendResponse(finalResult);
             } catch (IOException e) {
-                e.printStackTrace();
+                try {
+                    log.error("get", e);
+                    session.sendError(Response.INTERNAL_ERROR, "");
+                } catch (IOException ex) {
+                    log.error("IOException on session send error", e);
+                }
             }
         });
     }
