@@ -32,9 +32,7 @@ import java.util.concurrent.Executor;
 public class AsyncService extends HttpServer implements Service {
     private static final String PROXY_HEADER = "Is-Proxy: True";
     private final ExtendedDAO dao;
-    private final Executor executor;
     private static final Logger log = LoggerFactory.getLogger(AsyncService.class);
-    private final Topology<String> topology;
     private final Map<String, HttpClient> clusters;
     private final Replica replica;
 
@@ -52,8 +50,6 @@ public class AsyncService extends HttpServer implements Service {
                         @NotNull final Topology<String> topology) throws IOException {
         super(createService(port));
         this.dao = dao;
-        this.executor = executor;
-        this.topology = topology;
         this.clusters = new HashMap<>();
         for (final String node : topology.all()) {
             if (topology.isMe(node)) {

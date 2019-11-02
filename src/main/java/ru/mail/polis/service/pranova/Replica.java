@@ -24,7 +24,7 @@ import java.util.ArrayList;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
-public class Replica {
+class Replica {
     private static final String TIMESTAMP = "Timestamp: ";
     private static final String IOE_ERR = "IOException on session send error";
     private static final String NOT_ENOUGH_REPLICAS = "504 Not Enough Replicas";
@@ -35,10 +35,10 @@ public class Replica {
     private final Topology<String> topology;
     private final Map<String, HttpClient> clusters;
 
-    public Replica(@NotNull final ExtendedDAO dao,
-                   @NotNull final Executor executor,
-                   @NotNull final Topology<String> topology,
-                   @NotNull final Map<String, HttpClient> clusters) {
+    Replica(@NotNull final ExtendedDAO dao,
+            @NotNull final Executor executor,
+            @NotNull final Topology<String> topology,
+            @NotNull final Map<String, HttpClient> clusters) {
         this.dao = dao;
         this.executor = executor;
         this.topology = topology;
