@@ -1,7 +1,9 @@
 package ru.mail.polis.service.pranova;
 
+import ch.qos.logback.classic.joran.ReconfigureOnChangeTask;
 import com.google.common.base.Charsets;
 
+import com.google.protobuf.MapEntry;
 import one.nio.http.HttpClient;
 import one.nio.http.HttpServer;
 import one.nio.http.HttpSession;
@@ -21,18 +23,20 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.mail.polis.Record;
 import ru.mail.polis.dao.DAO;
+import ru.mail.polis.dao.pranova.Cell;
+import ru.mail.polis.dao.pranova.ExtendedDAO;
 import ru.mail.polis.service.Service;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.NoSuchElementException;
+import java.util.*;
 import java.util.concurrent.Executor;
 
 public class AsyncService extends HttpServer implements Service {
-    private final DAO dao;
+    private static final String PROXY_HEADER = "Is-Proxy: True";
+    private static final String TIMESTAMP = "Timestamp: ";
+    private static final String NOT_ENOUGH_REPLICAS = "504 Not Enough Replicas";
+    private final ExtendedDAO dao;
     private final Executor executor;
     private static final Logger log = LoggerFactory.getLogger(AsyncService.class);
     private final Topology<String> topology;
@@ -47,7 +51,7 @@ public class AsyncService extends HttpServer implements Service {
      * @throws IOException throw exception.
      */
     public AsyncService(final int port,
-                        @NotNull final DAO dao,
+                        @NotNull final ExtendedDAO dao,
                         @NotNull final Executor executor,
                         @NotNull final Topology<String> topology) throws IOException {
         super(createService(port));
@@ -80,9 +84,16 @@ public class AsyncService extends HttpServer implements Service {
      */
     @Path("/v0/entity")
     public void entity(@Param("id") final String id, final Request request,
-                       @NotNull final HttpSession session) throws IOException {
+                       @NotNull final HttpSession session,
+                       @Param("replicas") final String replicas) throws IOException {
         if (id == null || id.isEmpty()) {
             session.sendError(Response.BAD_REQUEST, "Key is NULL");
+            return;
+        }
+        final boolean isProxy = isProxied(request);
+        final Replicas replicasFactor = isProxy || replicas == null ? Replicas.quorum(clusters.size() + 1) : Replicas.parser(replicas);
+        if (replicasFactor.getAck() > replicasFactor.getFrom() || replicasFactor.getAck() <= 0) {
+            session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
             return;
         }
         final ByteBuffer key = ByteBuffer.wrap(id.getBytes(Charsets.UTF_8));
@@ -94,13 +105,13 @@ public class AsyncService extends HttpServer implements Service {
         final var method = request.getMethod();
         switch (method) {
             case Request.METHOD_GET:
-                asyncAct(session, () -> get(key));
+                execGet(session, request, key, isProxy, replicasFactor);
                 break;
             case Request.METHOD_PUT:
-                asyncAct(session, () -> put(key, request));
+                execPut(session, request, key, isProxy, replicasFactor);
                 break;
             case Request.METHOD_DELETE:
-                asyncAct(session, () -> delete(key));
+                execDelete(session, request, key, isProxy, replicasFactor);
                 break;
             default:
                 new Response(Response.METHOD_NOT_ALLOWED, Response.EMPTY);
@@ -108,11 +119,11 @@ public class AsyncService extends HttpServer implements Service {
         }
     }
 
-    private Response proxy(@NotNull final String node, @NotNull final Request request) throws IOException {
+    private Response proxy(@NotNull final String node, @NotNull final Request request) {
         try {
             return clusters.get(node).invoke(request);
-        } catch (InterruptedException | PoolException | HttpException e) {
-            throw new IOException("Can't proxy", e);
+        } catch (InterruptedException | PoolException | HttpException | IOException e) {
+            return new Response(Response.INTERNAL_ERROR, Response.EMPTY);
         }
     }
 
@@ -150,14 +161,23 @@ public class AsyncService extends HttpServer implements Service {
     }
 
     private Response get(@NotNull final ByteBuffer key) {
+        final Cell cell;
         try {
-            final ByteBuffer value = dao.get(key).duplicate();
-            final byte[] body = new byte[value.duplicate().remaining()];
-            value.get(body);
-            return new Response(Response.OK, body);
-        } catch (NoSuchElementException ex) {
+            cell = dao.getCell(key);
+            if (cell.getValue().isRemoved()) {
+                final Response response = new Response(Response.NOT_FOUND, Response.EMPTY);
+                response.addHeader(TIMESTAMP + cell.getValue().getTimeStamp());
+                return response;
+            }
+            final byte[] body = new byte[cell.getValue().getData().remaining()];
+            cell.getValue().getData().get(body);
+            final Response response = new Response(Response.OK, body);
+            response.addHeader(TIMESTAMP + cell.getValue().getTimeStamp());
+            return response;
+        } catch (NoSuchElementException e) {
             return new Response(Response.NOT_FOUND, Response.EMPTY);
-        } catch (IOException ex) {
+        } catch (IOException e) {
+            log.error("Can't get", e);
             return new Response(Response.INTERNAL_ERROR, Response.EMPTY);
         }
     }
@@ -212,7 +232,131 @@ public class AsyncService extends HttpServer implements Service {
         });
     }
 
+    private boolean isProxied(@NotNull final Request request) {
+        System.out.println("is proxy");
+        return request.getHeader(PROXY_HEADER) != null;
+    }
+
+    public static long getTimestamp(@NotNull final Response response) {
+        String timestamp = response.getHeader(TIMESTAMP);
+
+        return timestamp == null ? Long.MIN_VALUE : Long.parseLong(timestamp);
+    }
+
+    private List<Response> replication(@NotNull final Action action,
+                                       @NotNull final Request request,
+                                       @NotNull final ByteBuffer key,
+                                       @NotNull final Replicas replicas) {
+        request.addHeader(PROXY_HEADER);
+        final Set<String> nodes = topology.primaryFor(key, replicas);
+        final List<Response> result = new ArrayList<>(nodes.size());
+        for (String node : nodes) {
+            if (topology.isMe(node)) {
+                result.add(action.act());
+            } else {
+                result.add(proxy(node, request));
+            }
+        }
+        return result;
+    }
+
+    private void execPut(@NotNull final HttpSession session,
+                         @NotNull final Request request,
+                         @NotNull final ByteBuffer key,
+                         final boolean isProxy,
+                         @NotNull final Replicas replicas) {
+        if (isProxy) {
+            asyncAct(session, () -> put(key, request));
+            return;
+        }
+        executor.execute(() -> {
+            final List<Response> result = replication(() -> put(key, request), request, key, replicas);
+            int ack = 0;
+            for (Response current : result) {
+                if (getStatus(current).equals(Response.CREATED)) {
+                    ack++;
+                }
+            }
+            if (ack < replicas.getAck()) {
+                try {
+                    session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+    }
+
+    private void execDelete(@NotNull final HttpSession session,
+                            @NotNull final Request request,
+                            @NotNull final ByteBuffer key,
+                            final boolean isProxy,
+                            @NotNull final Replicas replicas) {
+        if (isProxy) {
+            asyncAct(session, () -> delete(key));
+            return;
+        }
+        executor.execute(() -> {
+            List<Response> result = replication(() -> delete(key), request, key, replicas);
+            int ack = 0;
+            for (Response current : result) {
+                if (getStatus(current).equals(Response.ACCEPTED)) {
+                    ack++;
+                }
+            }
+            if (ack < replicas.getAck()) {
+                try {
+                    session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+    }
+
+    private void execGet(@NotNull final HttpSession session,
+                         @NotNull final Request request,
+                         @NotNull final ByteBuffer key,
+                         final boolean isProxy,
+                         @NotNull final Replicas replicas) {
+        if (isProxy) {
+            asyncAct(session, () -> get(key));
+            return;
+        }
+        executor.execute(() -> {
+            try {
+                final List<Response> result =  replication(() -> put(key, request), request, key, replicas);
+                if (result.size() < replicas.getAck()) {
+                    session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
+                    return;
+                }
+                Map<Response, Integer> responses = new TreeMap<>();
+                result.forEach(resp -> {
+                    final Integer val = responses.get(resp);
+                    responses.put(resp, val == null ? 0 : val + 1);
+                });
+                Response finalResult = null;
+                int maxCount = -1;
+                long time = 1;
+                for (Map.Entry<Response, Integer> entry : responses.entrySet()) {
+                    if (entry.getValue() > maxCount & getTimestamp(entry.getKey()) > time) {
+                        time = getTimestamp(entry.getKey());
+                        maxCount = entry.getValue();
+                        finalResult = entry.getKey();
+                    }
+                }
+                session.sendResponse(finalResult);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    private String getStatus(@NotNull final Response response) {
+        return response.getHeaders()[0];
+    }
+
     public interface Action {
-        Response act() throws IOException;
+        Response act();
     }
 }

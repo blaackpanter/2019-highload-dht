@@ -37,7 +37,7 @@ public final class Value implements Comparable<Value> {
         return data.asReadOnlyBuffer();
     }
 
-    boolean isRemoved() {
+    public boolean isRemoved() {
         return data == null;
     }
 
@@ -46,7 +46,7 @@ public final class Value implements Comparable<Value> {
         return -Long.compare(timestamp, o.timestamp);
     }
 
-    long getTimeStamp() {
+    public long getTimeStamp() {
         return timestamp;
     }
 }

@@ -25,6 +25,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.jetbrains.annotations.NotNull;
 
 import ru.mail.polis.dao.DAO;
+import ru.mail.polis.dao.pranova.ExtendedDAO;
 import ru.mail.polis.service.pranova.AsyncService;
 import ru.mail.polis.service.pranova.Basic;
 
@@ -64,6 +65,6 @@ public final class ServiceFactory {
         final Executor executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(),
                 new ThreadFactoryBuilder().setNameFormat("asyncActs").build());
 
-        return new AsyncService(port, dao, executor, new Basic(topology, "http://localhost:" + port));
+        return new AsyncService(port, (ExtendedDAO) dao, executor, new Basic(topology, "http://localhost:" + port));
     }
 }
