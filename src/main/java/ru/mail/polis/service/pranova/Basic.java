@@ -4,6 +4,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Set;
 
 public class Basic implements Topology<String> {
@@ -25,8 +26,22 @@ public class Basic implements Topology<String> {
 
     @Override
     public String primaryFor(@NotNull final ByteBuffer key) {
-        final int number = key.hashCode() & (Integer.MAX_VALUE) % servers.length;
+        final int number = key.hashCode() & Integer.MAX_VALUE % servers.length;
         return servers[number];
+    }
+
+    @Override
+    public Set<String> primaryFor(@NotNull final ByteBuffer key, @NotNull final Replicas replicas) {
+        final Set<String> result = new HashSet<>();
+        int startIndex = key.hashCode() & Integer.MAX_VALUE % servers.length;
+        while (result.size() < replicas.getFrom()) {
+            result.add(servers[startIndex]);
+            startIndex++;
+            if (startIndex == servers.length) {
+                startIndex = 0;
+            }
+        }
+        return result;
     }
 
     @Override

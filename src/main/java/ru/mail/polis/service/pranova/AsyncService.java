@@ -9,34 +9,32 @@ import one.nio.http.Path;
 import one.nio.http.Response;
 import one.nio.http.Param;
 import one.nio.http.Request;
-import one.nio.http.HttpException;
 import one.nio.http.HttpServerConfig;
 import one.nio.net.ConnectionString;
 import one.nio.net.Socket;
-import one.nio.pool.PoolException;
 import one.nio.server.AcceptorConfig;
 import one.nio.server.RejectedSessionException;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.mail.polis.Record;
-import ru.mail.polis.dao.DAO;
+import ru.mail.polis.dao.pranova.ExtendedDAO;
 import ru.mail.polis.service.Service;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.NoSuchElementException;
 import java.util.concurrent.Executor;
 
 public class AsyncService extends HttpServer implements Service {
-    private final DAO dao;
-    private final Executor executor;
+    private static final String PROXY_HEADER = "Is-Proxy: True";
+    private final ExtendedDAO dao;
     private static final Logger log = LoggerFactory.getLogger(AsyncService.class);
-    private final Topology<String> topology;
     private final Map<String, HttpClient> clusters;
+    private final Replica replica;
 
     /**
      * Async service.
@@ -47,19 +45,18 @@ public class AsyncService extends HttpServer implements Service {
      * @throws IOException throw exception.
      */
     public AsyncService(final int port,
-                        @NotNull final DAO dao,
+                        @NotNull final ExtendedDAO dao,
                         @NotNull final Executor executor,
                         @NotNull final Topology<String> topology) throws IOException {
         super(createService(port));
         this.dao = dao;
-        this.executor = executor;
-        this.topology = topology;
         this.clusters = new HashMap<>();
         for (final String node : topology.all()) {
             if (topology.isMe(node)) {
                 continue;
             } else clusters.put(node, new HttpClient(new ConnectionString(node + "?timeout=100")));
         }
+        replica = new Replica(this.dao, executor, topology, clusters);
     }
 
     @Override
@@ -80,39 +77,34 @@ public class AsyncService extends HttpServer implements Service {
      */
     @Path("/v0/entity")
     public void entity(@Param("id") final String id, final Request request,
-                       @NotNull final HttpSession session) throws IOException {
+                       @NotNull final HttpSession session,
+                       @Param("replicas") final String replicas) throws IOException {
         if (id == null || id.isEmpty()) {
             session.sendError(Response.BAD_REQUEST, "Key is NULL");
             return;
         }
-        final ByteBuffer key = ByteBuffer.wrap(id.getBytes(Charsets.UTF_8));
-        final String node = topology.primaryFor(key);
-        if (!topology.isMe(node)) {
-            asyncAct(session, () -> proxy(node, request));
+        final boolean isProxy = isProxied(request);
+        final Replicas replicasFactor = isProxy
+                || replicas == null ? Replicas.quorum(clusters.size() + 1) : Replicas.parser(replicas);
+        if (replicasFactor.getAck() > replicasFactor.getFrom() || replicasFactor.getAck() <= 0) {
+            session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
             return;
         }
+        final ByteBuffer key = ByteBuffer.wrap(id.getBytes(Charsets.UTF_8));
         final var method = request.getMethod();
         switch (method) {
             case Request.METHOD_GET:
-                asyncAct(session, () -> get(key));
+                replica.execGet(session, request, key, isProxy, replicasFactor);
                 break;
             case Request.METHOD_PUT:
-                asyncAct(session, () -> put(key, request));
+                replica.execPut(session, request, key, isProxy, replicasFactor);
                 break;
             case Request.METHOD_DELETE:
-                asyncAct(session, () -> delete(key));
+                replica.execDelete(session, request, key, isProxy, replicasFactor);
                 break;
             default:
                 new Response(Response.METHOD_NOT_ALLOWED, Response.EMPTY);
                 break;
-        }
-    }
-
-    private Response proxy(@NotNull final String node, @NotNull final Request request) throws IOException {
-        try {
-            return clusters.get(node).invoke(request);
-        } catch (InterruptedException | PoolException | HttpException e) {
-            throw new IOException("Can't proxy", e);
         }
     }
 
@@ -149,38 +141,6 @@ public class AsyncService extends HttpServer implements Service {
         }
     }
 
-    private Response get(@NotNull final ByteBuffer key) {
-        try {
-            final ByteBuffer value = dao.get(key).duplicate();
-            final byte[] body = new byte[value.duplicate().remaining()];
-            value.get(body);
-            return new Response(Response.OK, body);
-        } catch (NoSuchElementException ex) {
-            return new Response(Response.NOT_FOUND, Response.EMPTY);
-        } catch (IOException ex) {
-            return new Response(Response.INTERNAL_ERROR, Response.EMPTY);
-        }
-    }
-
-    private Response put(@NotNull final ByteBuffer key, @NotNull final Request request) {
-        try {
-            final ByteBuffer valueBuff = ByteBuffer.wrap(request.getBody());
-            dao.upsert(key, valueBuff);
-            return new Response(Response.CREATED, Response.EMPTY);
-        } catch (IOException ex) {
-            return new Response(Response.INTERNAL_ERROR, Response.EMPTY);
-        }
-    }
-
-    private Response delete(@NotNull final ByteBuffer key) {
-        try {
-            dao.remove(key);
-            return new Response(Response.ACCEPTED, Response.EMPTY);
-        } catch (IOException ex) {
-            return new Response(Response.INTERNAL_ERROR, Response.EMPTY);
-        }
-    }
-
     private static HttpServerConfig createService(final int port) {
         if (port <= 1024 || port >= 65536) {
             throw new IllegalArgumentException("Invalid port");
@@ -197,22 +157,11 @@ public class AsyncService extends HttpServer implements Service {
         session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
     }
 
-    private void asyncAct(@NotNull final HttpSession session,
-                          @NotNull final Action action) {
-        executor.execute(() -> {
-            try {
-                session.sendResponse(action.act());
-            } catch (IOException e) {
-                try {
-                    session.sendError(Response.INTERNAL_ERROR, "");
-                } catch (IOException ex) {
-                    log.error("IOException on session send error", e);
-                }
-            }
-        });
+    private boolean isProxied(@NotNull final Request request) {
+        return request.getHeader(PROXY_HEADER) != null;
     }
 
     public interface Action {
-        Response act() throws IOException;
+        Response act();
     }
 }

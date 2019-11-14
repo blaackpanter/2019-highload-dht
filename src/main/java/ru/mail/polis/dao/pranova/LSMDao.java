@@ -4,7 +4,6 @@ import com.google.common.collect.Iterators;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import ru.mail.polis.dao.DAO;
 import ru.mail.polis.dao.Iters;
 import ru.mail.polis.Record;
 
@@ -18,14 +17,16 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
+
 import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NavigableMap;
+import java.util.ArrayList;
+import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-public final class LSMDao implements DAO {
+public final class LSMDao implements ExtendedDAO {
     private static final String SUFFIX = ".dat";
     public static final String TEMP = ".tmp";
     private static final String PREFIX = "PRL";
@@ -72,7 +73,9 @@ public final class LSMDao implements DAO {
     @NotNull
     @Override
     public Iterator<Record> iterator(@NotNull final ByteBuffer from) throws IOException {
-        return getIterator(from, FileTable.Order.DIRECT);
+        final Iterator<Cell> alive = Iterators.filter(getIterator(from, FileTable.Order.DIRECT),
+                cell -> !cell.getValue().isRemoved());
+        return Iterators.transform(alive, cell -> Record.of(cell.getKey(), cell.getValue().getData()));
     }
 
     @Override
@@ -87,8 +90,7 @@ public final class LSMDao implements DAO {
 
     private Iterator<Cell> getCellsIterator(@NotNull final List<Iterator<Cell>> iterators) {
         final Iterator<Cell> mergedCells = Iterators.mergeSorted(iterators, Cell.COMPARATOR);
-        final Iterator<Cell> cells = Iters.collapseEquals(mergedCells, Cell::getKey);
-        return Iterators.filter(cells, cell -> !cell.getValue().isRemoved());
+        return Iters.collapseEquals(mergedCells, Cell::getKey);
     }
 
     @Override
@@ -119,12 +121,21 @@ public final class LSMDao implements DAO {
         }
     }
 
+    /**
+     * Iterator from end.
+     *
+     * @param from input parameter.
+     * @return iterator with record.
+     * @throws IOException exception.
+     */
     public Iterator<Record> decreasingIterator(@NotNull final ByteBuffer from) throws IOException {
-        return getIterator(from, FileTable.Order.REVERSE);
+        final Iterator<Cell> allCellsD = getIterator(from, FileTable.Order.REVERSE);
+        final Iterator<Cell> aliveD = Iterators.filter(allCellsD, cell -> !cell.getValue().isRemoved());
+        return Iterators.transform(aliveD, cell -> Record.of(cell.getKey(), cell.getValue().getData()));
     }
 
-    private Iterator<Record> getIterator(@NotNull final ByteBuffer from,
-                                         @NotNull final FileTable.Order order)
+    private Iterator<Cell> getIterator(@NotNull final ByteBuffer from,
+                                       @NotNull final FileTable.Order order)
             throws IOException {
         final List<Iterator<Cell>> filesIterators = new ArrayList<>();
 
@@ -137,8 +148,22 @@ public final class LSMDao implements DAO {
         filesIterators.add(order == FileTable.Order.DIRECT
                 ? memTable.iterator(from)
                 : memTable.decreasingIterator(from));
-        final Iterator<Cell> alive = getCellsIterator(filesIterators);
-        return Iterators.transform(alive, cell -> Record.of(cell.getKey(), cell.getValue().getData()));
+        return getCellsIterator(filesIterators);
+    }
+
+    @Override
+    public Cell getCell(@NotNull final ByteBuffer key) throws IOException {
+        final Iterator<Cell> iter = getIterator(key, FileTable.Order.DIRECT);
+        if (!iter.hasNext()) {
+            throw new NoSuchElementException("Not found");
+        }
+
+        final Cell next = iter.next();
+        if (next.getKey().equals(key)) {
+            return next;
+        } else {
+            throw new NoSuchElementException("Not found");
+        }
     }
 
     class Worker extends Thread {
