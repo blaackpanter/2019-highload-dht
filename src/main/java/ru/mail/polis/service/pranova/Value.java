@@ -10,15 +10,15 @@ public class Value {
     private final String status;
     private final byte[] body;
     private final long timestamp;
-    private static final byte[] emptyValue = Response.EMPTY;
-    private static final long emptyTimestamp = -1;
+    private static final byte[] EMPTY_VALUE = Response.EMPTY;
+    private static final long EMPTY_TIMESTAMP = -1;
 
     public Value(final int status, final byte[] body, final long timestamp) {
         this(convertStatus(status), body, timestamp);
     }
 
     public Value(@NotNull final String status, final byte[] body, final long timestamp) {
-        this.body = body;
+        this.body = Arrays.copyOf(body, body.length);
         this.timestamp = timestamp;
         this.status = status;
     }
@@ -48,12 +48,8 @@ public class Value {
         return new Response(status, body);
     }
 
-    public String getStatus() {
-        return status;
-    }
-
     public byte[] getValue() {
-        return body;
+        return Arrays.copyOf(body, body.length);
     }
 
     public long getTimestamp() {
@@ -64,7 +60,7 @@ public class Value {
     public boolean equals(@NotNull final Object o) {
         if (this == o) return true;
         if (!(o instanceof Value)) return false;
-        Value value1 = (Value) o;
+        final Value value1 = (Value) o;
         return timestamp == value1.timestamp &&
                 Objects.equals(status, value1.status) &&
                 Arrays.equals(body, value1.body);
@@ -78,6 +74,6 @@ public class Value {
     }
 
     public static Value errorValue(@NotNull final String status) {
-        return new Value(status, emptyValue, emptyTimestamp);
+        return new Value(status, EMPTY_VALUE, EMPTY_TIMESTAMP);
     }
 }
