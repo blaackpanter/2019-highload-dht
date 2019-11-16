@@ -60,10 +60,10 @@ public class Value {
     public boolean equals(@NotNull final Object o) {
         if (this == o) return true;
         if (!(o instanceof Value)) return false;
-        final Value value1 = (Value) o;
-        return timestamp == value1.timestamp &&
-                Objects.equals(status, value1.status) &&
-                Arrays.equals(body, value1.body);
+        final Value value = (Value) o;
+        return timestamp == value.timestamp &&
+                Objects.equals(status, value.status) &&
+                Arrays.equals(body, value.body);
     }
 
     @Override
