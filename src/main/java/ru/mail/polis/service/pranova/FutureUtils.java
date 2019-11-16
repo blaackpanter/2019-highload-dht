@@ -26,7 +26,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-class FutureUtils {
+final class FutureUtils {
     private static final Logger log = LoggerFactory.getLogger(FutureUtils.class);
 
     private FutureUtils() {
