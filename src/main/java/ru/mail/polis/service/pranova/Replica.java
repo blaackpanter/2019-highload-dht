@@ -80,26 +80,22 @@ class Replica {
         }
     }
 
-    void execPut(@NotNull final HttpSession session,
-                 @NotNull final Request request,
-                 @NotNull final ByteBuffer key,
-                 final boolean isProxy,
-                 @NotNull final Replicas replicas) {
-        execAct(session, request, key, isProxy, replicas, () -> put(key, request));
+    void execPut(@NotNull final Context context,
+                 @NotNull final ByteBuffer key) {
+        execAct(context,
+                key,
+                () -> put(key, context.getRequest()));
     }
 
-    void execAct(@NotNull final HttpSession session,
-                 @NotNull final Request request,
+    void execAct(@NotNull final Context context,
                  @NotNull final ByteBuffer key,
-                 final boolean isProxy,
-                 @NotNull final Replicas replicas,
                  @NotNull final AsyncService.Action action) {
-        if (isProxy) {
-            asyncAct(session, action);
+        if (context.isProxy()) {
+            asyncAct(context.getSession(), action);
             return;
         }
-        final List<CompletableFuture<Value>> futures = FutureUtils.replication(action, request, key, replicas, topology, client);
-        schedule(futures, replicas.getAck(), session);
+        final List<CompletableFuture<Value>> futures = FutureUtils.replication(action, key, topology, client, context);
+        schedule(futures, context.getRf().getAck(), context.getSession());
     }
 
     private void schedule(@NotNull final List<CompletableFuture<Value>> futures,
@@ -124,20 +120,14 @@ class Replica {
         });
     }
 
-    void execDelete(@NotNull final HttpSession session,
-                    @NotNull final Request request,
-                    @NotNull final ByteBuffer key,
-                    final boolean isProxy,
-                    @NotNull final Replicas replicas) {
-        execAct(session, request, key, isProxy, replicas, () -> delete(key));
+    void execDelete(@NotNull final Context context,
+                    @NotNull final ByteBuffer key) {
+        execAct(context, key, () -> delete(key));
     }
 
-    void execGet(@NotNull final HttpSession session,
-                 @NotNull final Request request,
-                 @NotNull final ByteBuffer key,
-                 final boolean isProxy,
-                 @NotNull final Replicas replicas) {
-        execAct(session, request, key, isProxy, replicas, () -> get(key));
+    void execGet(@NotNull final Context context,
+                 @NotNull final ByteBuffer key) {
+        execAct(context, key, () -> get(key));
     }
 
     private void asyncAct(@NotNull final HttpSession session,

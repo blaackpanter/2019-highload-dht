@@ -92,12 +92,11 @@ final class FutureUtils {
     }
 
     static List<CompletableFuture<Value>> replication(@NotNull final AsyncService.Action action,
-                                                      @NotNull final Request request,
                                                       @NotNull final ByteBuffer key,
-                                                      @NotNull final Replicas replicas,
                                                       @NotNull final Topology<String> topology,
-                                                      @NotNull final HttpClient client) {
-        final Set<String> nodes = topology.primaryFor(key, replicas);
+                                                      @NotNull final HttpClient client,
+                                                      @NotNull final Context context) {
+        final Set<String> nodes = topology.primaryFor(key, context.getRf());
         final List<CompletableFuture<Value>> result = new ArrayList<>(nodes.size());
         for (final String node : nodes) {
             if (topology.isMe(node)) {
@@ -111,10 +110,10 @@ final class FutureUtils {
                         + "/v0/entity?id="
                         + StandardCharsets.UTF_8.decode(key).toString()
                         + "&replicas="
-                        + replicas.toString());
+                        + context.getRf().toString());
                 key.flip();
                 final CompletableFuture<Value> future = client
-                        .sendAsync(convertRequest(request, uri), HttpResponse.BodyHandlers.ofByteArray())
+                        .sendAsync(convertRequest(context.getRequest(), uri), HttpResponse.BodyHandlers.ofByteArray())
                         .thenApply(r -> new Value(r.statusCode(),
                                 r.body(),
                                 Long.parseLong(r.headers().firstValue(Replica.TIMESTAMP_HEADER).orElse("-1"))));

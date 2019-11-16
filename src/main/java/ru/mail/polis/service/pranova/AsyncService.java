@@ -87,13 +87,13 @@ public class AsyncService extends HttpServer implements Service {
         final var method = request.getMethod();
         switch (method) {
             case Request.METHOD_GET:
-                replica.execGet(session, request, key, isProxy, replicasFactor);
+                replica.execGet(new Context(session, isProxy, request, replicasFactor), key);
                 break;
             case Request.METHOD_PUT:
-                replica.execPut(session, request, key, isProxy, replicasFactor);
+                replica.execPut(new Context(session, isProxy, request, replicasFactor), key);
                 break;
             case Request.METHOD_DELETE:
-                replica.execDelete(session, request, key, isProxy, replicasFactor);
+                replica.execDelete(new Context(session, isProxy, request, replicasFactor), key);
                 break;
             default:
                 new Response(Response.METHOD_NOT_ALLOWED, Response.EMPTY);
