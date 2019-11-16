@@ -29,6 +29,9 @@ import java.util.stream.Collectors;
 class FutureUtils {
     private static final Logger log = LoggerFactory.getLogger(FutureUtils.class);
 
+    private FutureUtils() {
+    }
+
     static CompletableFuture<Value> merge(@NotNull final CompletableFuture<List<Value>> future) {
         final CompletableFuture<Value> result = new CompletableFuture<>();
         future.whenCompleteAsync((v, e) -> {
@@ -53,7 +56,7 @@ class FutureUtils {
     }
 
     static CompletableFuture<List<Value>> collect(@NotNull final List<CompletableFuture<Value>> values,
-                                                  int min) {
+                                                  final int min) {
         final CompletableFuture<List<Value>> future = new CompletableFuture<>();
         final AtomicInteger errors = new AtomicInteger(0);
         final List<Value> result = new ArrayList<>(min);
