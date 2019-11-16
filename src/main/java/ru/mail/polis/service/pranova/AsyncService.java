@@ -2,7 +2,6 @@ package ru.mail.polis.service.pranova;
 
 import com.google.common.base.Charsets;
 
-import one.nio.http.HttpClient;
 import one.nio.http.HttpServer;
 import one.nio.http.HttpSession;
 import one.nio.http.Path;
@@ -10,7 +9,6 @@ import one.nio.http.Response;
 import one.nio.http.Param;
 import one.nio.http.Request;
 import one.nio.http.HttpServerConfig;
-import one.nio.net.ConnectionString;
 import one.nio.net.Socket;
 import one.nio.server.AcceptorConfig;
 import one.nio.server.RejectedSessionException;
@@ -24,17 +22,17 @@ import ru.mail.polis.service.Service;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
-import java.util.HashMap;
 import java.util.Iterator;
-import java.util.Map;
 import java.util.concurrent.Executor;
 
 public class AsyncService extends HttpServer implements Service {
-    private static final String PROXY_HEADER = "Is-Proxy: True";
     private final ExtendedDAO dao;
     private static final Logger log = LoggerFactory.getLogger(AsyncService.class);
-    private final Map<String, HttpClient> clusters;
     private final Replica replica;
+    static final String PROXY_HEADER_KEY = "is-proxy";
+    static final String PROXY_HEADER_VALUE = "true";
+    static final String HEADER_SEP = ":";
+    private final int quorum;
 
     /**
      * Async service.
@@ -50,13 +48,8 @@ public class AsyncService extends HttpServer implements Service {
                         @NotNull final Topology<String> topology) throws IOException {
         super(createService(port));
         this.dao = dao;
-        this.clusters = new HashMap<>();
-        for (final String node : topology.all()) {
-            if (topology.isMe(node)) {
-                continue;
-            } else clusters.put(node, new HttpClient(new ConnectionString(node + "?timeout=100")));
-        }
-        replica = new Replica(this.dao, executor, topology, clusters);
+        this.replica = new Replica(this.dao, executor, topology);
+        this.quorum = topology.size();
     }
 
     @Override
@@ -85,7 +78,7 @@ public class AsyncService extends HttpServer implements Service {
         }
         final boolean isProxy = isProxied(request);
         final Replicas replicasFactor = isProxy
-                || replicas == null ? Replicas.quorum(clusters.size() + 1) : Replicas.parser(replicas);
+                || replicas == null ? Replicas.quorum(quorum) : Replicas.parser(replicas);
         if (replicasFactor.getAck() > replicasFactor.getFrom() || replicasFactor.getAck() <= 0) {
             session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
             return;
@@ -153,12 +146,13 @@ public class AsyncService extends HttpServer implements Service {
     }
 
     @Override
-    public void handleDefault(@NotNull final Request request, @NotNull final HttpSession session) throws IOException {
+    public void handleDefault(@NotNull final Request request,
+                              @NotNull final HttpSession session) throws IOException {
         session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
     }
 
     private boolean isProxied(@NotNull final Request request) {
-        return request.getHeader(PROXY_HEADER) != null;
+        return request.getHeader(PROXY_HEADER_KEY + HEADER_SEP) != null;
     }
 
     public interface Action {

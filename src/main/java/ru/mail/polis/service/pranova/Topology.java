@@ -14,4 +14,6 @@ public interface Topology<T> {
     boolean isMe(@NotNull final T node);
 
     Set<T> all();
+
+    int size();
 }

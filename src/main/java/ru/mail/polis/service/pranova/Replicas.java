@@ -30,4 +30,9 @@ public final class Replicas {
     public int getFrom() {
         return from;
     }
+
+    @Override
+    public String toString() {
+        return ack + "/" + from;
+    }
 }

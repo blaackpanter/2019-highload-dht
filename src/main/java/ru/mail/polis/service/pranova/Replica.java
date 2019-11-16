@@ -1,11 +1,9 @@
 package ru.mail.polis.service.pranova;
 
-import one.nio.http.HttpClient;
+
 import one.nio.http.HttpSession;
 import one.nio.http.Response;
 import one.nio.http.Request;
-import one.nio.http.HttpException;
-import one.nio.pool.PoolException;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,36 +11,49 @@ import ru.mail.polis.dao.pranova.Cell;
 import ru.mail.polis.dao.pranova.ExtendedDAO;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.List;
-import java.util.Comparator;
 import java.util.TreeMap;
-import java.util.Set;
 import java.util.ArrayList;
+import java.util.Set;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 class Replica {
-    private static final String TIMESTAMP = "Timestamp: ";
+    private static final String TIMESTAMP = "timestamp";
     private static final String IOE_ERR = "IOException on session send error";
     private static final String NOT_ENOUGH_REPLICAS = "504 Not Enough Replicas";
-    private static final String PROXY_HEADER = "Is-Proxy: True";
     private static final Logger log = LoggerFactory.getLogger(AsyncService.class);
     private final ExtendedDAO dao;
     private final Executor executor;
     private final Topology<String> topology;
-    private final Map<String, HttpClient> clusters;
+    private final HttpClient client;
+    private final static Duration timeout = Duration.ofSeconds(1);
 
     Replica(@NotNull final ExtendedDAO dao,
             @NotNull final Executor executor,
-            @NotNull final Topology<String> topology,
-            @NotNull final Map<String, HttpClient> clusters) {
+            @NotNull final Topology<String> topology) {
         this.dao = dao;
         this.executor = executor;
         this.topology = topology;
-        this.clusters = clusters;
+        this.client = HttpClient.newBuilder().connectTimeout(timeout).build();
     }
 
     private Response get(@NotNull final ByteBuffer key) {
@@ -51,13 +62,13 @@ class Replica {
             cell = dao.getCell(key);
             if (cell.getValue().isRemoved()) {
                 final Response response = new Response(Response.NOT_FOUND, Response.EMPTY);
-                response.addHeader(TIMESTAMP + cell.getValue().getTimeStamp());
+                response.addHeader(TIMESTAMP + AsyncService.HEADER_SEP + cell.getValue().getTimeStamp());
                 return response;
             }
             final byte[] body = new byte[cell.getValue().getData().remaining()];
             cell.getValue().getData().get(body);
             final Response response = new Response(Response.OK, body);
-            response.addHeader(TIMESTAMP + cell.getValue().getTimeStamp());
+            response.addHeader(TIMESTAMP + AsyncService.HEADER_SEP + cell.getValue().getTimeStamp());
             return response;
         } catch (NoSuchElementException e) {
             return new Response(Response.NOT_FOUND, Response.EMPTY);
@@ -95,15 +106,26 @@ class Replica {
             asyncAct(session, () -> put(key, request));
             return;
         }
-        executor.execute(() -> {
-            final List<Response> result = replication(() -> put(key, request), request, key, replicas);
-            int ack = 0;
-            for (final Response current : result) {
-                if (getStatus(current).equals(Response.CREATED)) {
-                    ack++;
+        List<CompletableFuture<Value>> futures = replication(() -> put(key, request), request, key, replicas);
+        schedule(futures, replicas.getAck(), session);
+    }
+
+    private void schedule(@NotNull final List<CompletableFuture<Value>> futures,
+                          final int min,
+                          @NotNull final HttpSession session) {
+        CompletableFuture<List<Value>> future = collect(futures, min);
+        CompletableFuture<Value> result = merge(future);
+        result.thenAccept(v -> {
+            try {
+                session.sendResponse(v.toResponse());
+            } catch (IOException e) {
+                try {
+                    log.error("schedule", e);
+                    session.sendError(Response.INTERNAL_ERROR, "");
+                } catch (IOException ex) {
+                    log.error(IOE_ERR, e);
                 }
             }
-            correctReplication(ack, replicas, session, Response.CREATED);
         });
     }
 
@@ -116,16 +138,8 @@ class Replica {
             asyncAct(session, () -> delete(key));
             return;
         }
-        executor.execute(() -> {
-            final List<Response> result = replication(() -> delete(key), request, key, replicas);
-            int ack = 0;
-            for (final Response current : result) {
-                if (getStatus(current).equals(Response.ACCEPTED)) {
-                    ack++;
-                }
-            }
-            correctReplication(ack, replicas, session, Response.ACCEPTED);
-        });
+        List<CompletableFuture<Value>> futures = replication(() -> delete(key), request, key, replicas);
+        schedule(futures, replicas.getAck(), session);
     }
 
     protected void execGet(@NotNull final HttpSession session,
@@ -137,25 +151,8 @@ class Replica {
             asyncAct(session, () -> get(key));
             return;
         }
-        executor.execute(() -> {
-            try {
-                final List<Response> result = replication(() -> get(key), request, key, replicas).stream()
-                        .filter(resp -> getStatus(resp).equals(Response.OK)
-                                || getStatus(resp).equals(Response.NOT_FOUND)).collect(Collectors.toList());
-                if (result.size() < replicas.getAck()) {
-                    session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
-                    return;
-                }
-                session.sendResponse(mergeResponses(result));
-            } catch (IOException e) {
-                try {
-                    log.error("get", e);
-                    session.sendError(Response.INTERNAL_ERROR, "");
-                } catch (IOException ex) {
-                    log.error(IOE_ERR, e);
-                }
-            }
-        });
+        List<CompletableFuture<Value>> futures = replication(() -> get(key), request, key, replicas);
+        schedule(futures, replicas.getAck(), session);
     }
 
     private Response mergeResponses(@NotNull final List<Response> result) {
@@ -192,49 +189,118 @@ class Replica {
         });
     }
 
-    private void correctReplication(@NotNull final int ack,
-                                    @NotNull final Replicas replicas,
-                                    @NotNull final HttpSession session,
-                                    @NotNull final String str) {
-        try {
-            if (ack < replicas.getAck()) {
-                session.sendResponse(new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY));
+    private CompletableFuture<Value> merge(@NotNull final CompletableFuture<List<Value>> future) {
+        CompletableFuture<Value> result = new CompletableFuture<>();
+        future.whenCompleteAsync((v, e) -> {
+            if (e != null) {
+                result.complete(Value.errorValue(NOT_ENOUGH_REPLICAS));
+                return;
+            }
+            final Comparator<Map.Entry<Value, Integer>> comparator = Comparator.comparingInt(Map.Entry::getValue);
+            final Optional<Map.Entry<Value, Integer>> actualResponse = v.stream()
+                    .collect(Collectors.toMap(Function.identity(), r -> 1, Integer::sum)).entrySet().stream()
+                    .max(comparator.thenComparingLong(v1 -> v1.getKey().getTimestamp()));
+            if (actualResponse.isPresent()) {
+                result.complete(actualResponse.get().getKey());
             } else {
-                session.sendResponse(new Response(str, Response.EMPTY));
+                result.complete(Value.errorValue(Response.INTERNAL_ERROR));
             }
-        } catch (IOException e) {
-            try {
-                session.sendError(Response.INTERNAL_ERROR, "");
-            } catch (IOException ex) {
-                log.error(IOE_ERR, e);
-            }
-        }
+        }).exceptionally(e -> {
+            log.error("merge - ", e);
+            return null;
+        });
+        return result;
     }
 
-    private List<Response> replication(@NotNull final AsyncService.Action action,
-                                       @NotNull final Request request,
-                                       @NotNull final ByteBuffer key,
-                                       @NotNull final Replicas replicas) {
-        request.addHeader(PROXY_HEADER);
+    private CompletableFuture<List<Value>> collect(@NotNull final List<CompletableFuture<Value>> values,
+                                                   int min) {
+        CompletableFuture<List<Value>> future = new CompletableFuture<>();
+        AtomicInteger errors = new AtomicInteger(0);
+        List<Value> result = new ArrayList<>(min);
+        Lock lock = new ReentrantLock();
+        int maxErrors = values.size() - min + 1;
+        for (CompletableFuture<Value> value :
+                values) {
+            value.whenComplete((v, e) -> {
+                if (e != null) {
+                    if (errors.incrementAndGet() == maxErrors) {
+                        future.completeExceptionally(new RejectedExecutionException(e));
+                    }
+                    return;
+                }
+                try {
+                    lock.lock();
+                    if (result.size() >= min) {
+                        return;
+                    }
+                    result.add(v);
+                    if (result.size() == min) {
+                        future.complete(result);
+                    }
+                } finally {
+                    lock.unlock();
+                }
+            }).exceptionally(e -> {
+                log.error("Future error - ", e);
+                return null;
+            });
+        }
+        return future;
+    }
+
+    private List<CompletableFuture<Value>> replication(@NotNull final AsyncService.Action action,
+                                                       @NotNull final Request request,
+                                                       @NotNull final ByteBuffer key,
+                                                       @NotNull final Replicas replicas) {
         final Set<String> nodes = topology.primaryFor(key, replicas);
-        final List<Response> result = new ArrayList<>(nodes.size());
+        final List<CompletableFuture<Value>> result = new ArrayList<>(nodes.size());
         for (final String node : nodes) {
             if (topology.isMe(node)) {
-                result.add(action.act());
+                CompletableFuture<Value> future = CompletableFuture.supplyAsync(() -> {
+                    Response response = action.act();
+                    Value value = new Value(response.getStatus(), response.getBody(), getTimestamp(response));
+                    return value;
+                });
+                result.add(future);
             } else {
-                result.add(proxy(node, request));
+                URI uri = URI.create(node
+                        + "/v0/entity?id="
+                        + StandardCharsets.UTF_8.decode(key).toString()
+                        + "&replicas="
+                        + replicas.toString());
+                key.flip();
+                HttpRequest request1 = convertRequest(request, uri);
+                CompletableFuture<Value> future = client
+                        .sendAsync(request1, HttpResponse.BodyHandlers.ofByteArray())
+                        .thenApply(r -> {
+                            Value value = new Value(r.statusCode(),
+                                    r.body(),
+                                    Long.parseLong(r.headers().firstValue(TIMESTAMP).orElse("-1")));
+                            return value;
+                        });
+                result.add(future);
             }
         }
         return result;
     }
 
-    private Response proxy(@NotNull final String node, @NotNull final Request request) {
-        try {
-            return clusters.get(node).invoke(request);
-        } catch (InterruptedException | PoolException | HttpException | IOException e) {
-            return new Response(Response.INTERNAL_ERROR, Response.EMPTY);
+    private HttpRequest convertRequest(@NotNull final Request request, URI uri) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .timeout(timeout)
+                .uri(uri)
+                .headers(AsyncService.PROXY_HEADER_KEY, AsyncService.PROXY_HEADER_VALUE);
+        switch (request.getMethod()) {
+            case Request.METHOD_GET:
+                return builder.GET().build();
+            case Request.METHOD_PUT:
+                return builder.PUT(HttpRequest.BodyPublishers.ofByteArray(request.getBody())).build();
+            case Request.METHOD_DELETE:
+                return builder.DELETE().build();
+            default:
+                throw new UnsupportedOperationException(request.getMethod() + "not available");
         }
     }
+
 
     private String getStatus(@NotNull final Response response) {
         return response.getHeaders()[0];
@@ -247,7 +313,7 @@ class Replica {
      * @return long value.
      */
     public static long getTimestamp(@NotNull final Response response) {
-        final String timestamp = response.getHeader(TIMESTAMP);
+        final String timestamp = response.getHeader(TIMESTAMP + ":");
         return timestamp == null ? -1 : Long.parseLong(timestamp);
     }
 }
