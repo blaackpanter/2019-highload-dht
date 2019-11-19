@@ -4,7 +4,7 @@ import one.nio.http.HttpSession;
 import one.nio.http.Request;
 import org.jetbrains.annotations.NotNull;
 
-public class Context {
+class Context {
     private final HttpSession session;
     private final boolean isProxy;
     private final Request request;

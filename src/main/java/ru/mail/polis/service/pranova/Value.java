@@ -6,7 +6,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Arrays;
 import java.util.Objects;
 
-public class Value {
+class Value {
     private final String status;
     private final byte[] body;
     private final long timestamp;
@@ -61,9 +61,9 @@ public class Value {
         if (this == o) return true;
         if (!(o instanceof Value)) return false;
         final Value value = (Value) o;
-        return timestamp == value.timestamp &&
-                Objects.equals(status, value.status) &&
-                Arrays.equals(body, value.body);
+        return timestamp == value.timestamp
+                && Objects.equals(status, value.status)
+                && Arrays.equals(body, value.body);
     }
 
     @Override

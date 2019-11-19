@@ -28,7 +28,7 @@ class Replica {
     private final Executor executor;
     private final Topology<String> topology;
     private final HttpClient client;
-    final static Duration timeout = Duration.ofSeconds(1);
+    static final Duration timeout = Duration.ofSeconds(1);
 
     Replica(@NotNull final ExtendedDAO dao,
             @NotNull final Executor executor,
