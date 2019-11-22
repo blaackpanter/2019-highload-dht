@@ -108,10 +108,9 @@ final class FutureUtils {
             } else {
                 final URI uri = URI.create(node
                         + "/v0/entity?id="
-                        + StandardCharsets.UTF_8.decode(key).toString()
+                        + StandardCharsets.UTF_8.decode(key.duplicate()).toString()
                         + "&replicas="
                         + context.getRf().toString());
-                key.flip();
                 final CompletableFuture<Value> future = client
                         .sendAsync(convertRequest(context.getRequest(), uri), HttpResponse.BodyHandlers.ofByteArray())
                         .thenApply(r -> new Value(r.statusCode(),

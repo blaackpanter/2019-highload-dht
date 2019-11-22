@@ -178,12 +178,12 @@ public final class LSMDao implements ExtendedDAO {
             while (!poisoned && !isInterrupted()) {
                 try {
                     final FlushTable table = memTable.tableToFlush();
+                    poisoned = table.isPoisonPills();
                     flush(table.data(), table.getGeneration());
                     compacting = table.isCompactionTable();
                     if (compacting) {
                         compactFiles();
                     }
-                    poisoned = table.isPoisonPills();
                     memTable.flushed(table.getGeneration());
                 } catch (InterruptedException e) {
                     interrupt();
