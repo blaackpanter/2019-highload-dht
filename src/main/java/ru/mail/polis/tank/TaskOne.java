@@ -13,7 +13,7 @@ final class TaskOne {
     private TaskOne() {
     }
 
-    static void main(final String[] args) throws IOException {
+    static void main(final String... args) throws IOException {
         if (args.length != 0) {
             log.info("No need to add params");
         }
