@@ -7,6 +7,10 @@ import java.util.List;
 import java.util.Random;
 
 public class TaskFour {
+
+    private TaskFour() {
+    }
+
     static void main(final String[] args) throws IOException {
         final int count = 1000000;
         final int valueLength = 256;

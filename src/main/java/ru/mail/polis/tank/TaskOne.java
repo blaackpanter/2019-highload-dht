@@ -4,6 +4,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 
 public class TaskOne {
+
+    private TaskOne() {
+    }
+
     static void main(final String[] args) throws IOException {
         final int count = 1000000;
         final int valueLength = 256;

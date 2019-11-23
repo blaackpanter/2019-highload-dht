@@ -7,6 +7,10 @@ import java.util.List;
 import java.util.Random;
 
 public class TaskTwo {
+
+    private TaskTwo() {
+    }
+
     static void main(final String[] args) throws IOException {
         final int count = 1000000;
         final int valueLength = 256;
@@ -17,7 +21,7 @@ public class TaskTwo {
             for (int i = 0; i < count; i++) {
                 final float repeat = random.nextFloat();
                 String key;
-                if (Float.compare(repeat, repeatProb) < 0 && keys.size() != 0) {
+                if (Float.compare(repeat, repeatProb) < 0 && !keys.isEmpty()) {
                     key = keys.get(random.nextInt(keys.size()));
                 } else {
                     key = GeneratorUtil.randomKey();

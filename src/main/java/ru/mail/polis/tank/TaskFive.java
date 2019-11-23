@@ -9,14 +9,18 @@ import java.util.Random;
 import static ru.mail.polis.tank.GeneratorUtil.randomKey;
 
 public class TaskFive {
+
+    private TaskFive() {
+    }
+
     static void main(final String[] args) throws IOException {
         final int count = 1000000;
         final int valueLength = 256;
         final Random random = new Random();
-        try (final FileOutputStream fileOutputStream = new FileOutputStream("tank/task5.txt")) {
+        try (FileOutputStream fileOutputStream = new FileOutputStream("tank/task5.txt")) {
             final List<String> keys = new ArrayList<>(count);
             for (int i = 0; i < count; i++) {
-                if (random.nextBoolean() && keys.size() != 0) {
+                if (random.nextBoolean() && !keys.isEmpty()) {
                     final String key = keys.get(random.nextInt(keys.size()));
                     GeneratorUtil.get(fileOutputStream, key);
                 } else {
