@@ -6,12 +6,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
-public class TaskTwo {
+public final class TaskTwo {
 
     private TaskTwo() {
     }
 
-    static void main(final String[] args) throws IOException {
+    static void main(final String[] varargs) throws IOException {
         final int count = 1000000;
         final int valueLength = 256;
         final Random random = new Random();

@@ -8,12 +8,12 @@ import java.util.Random;
 
 import static ru.mail.polis.tank.GeneratorUtil.randomKey;
 
-public class TaskFive {
+public final class TaskFive {
 
     private TaskFive() {
     }
 
-    static void main(final String[] args) throws IOException {
+    static void main(final String[] varargs) throws IOException {
         final int count = 1000000;
         final int valueLength = 256;
         final Random random = new Random();
