@@ -7,13 +7,13 @@ import java.util.List;
 import java.util.Random;
 
 public class TaskFour {
-    public static void main(String[] args) throws IOException {
+    static void main(final String[] args) throws IOException {
         final int count = 1000000;
         final int valueLength = 256;
         final int skipKeys = (int) (count * 0.9f);
         final Random random = new Random();
-        try (final FileOutputStream fileOutputStream = new FileOutputStream("tank/putTask4.txt");
-             final FileOutputStream fileOutputStream1 = new FileOutputStream("tank/task4.txt")) {
+        try (FileOutputStream fileOutputStream = new FileOutputStream("tank/putTask4.txt");
+             FileOutputStream fileOutputStream1 = new FileOutputStream("tank/task4.txt")) {
             final List<String> keys = new ArrayList<>(count);
             for (int i = 0; i < count; i++) {
                 final String key = GeneratorUtil.randomKey();

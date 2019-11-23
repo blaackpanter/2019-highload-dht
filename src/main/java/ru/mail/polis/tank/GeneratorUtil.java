@@ -10,7 +10,7 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ThreadLocalRandom;
 
-public class GeneratorUtil {
+public final class GeneratorUtil {
     private GeneratorUtil() {
     }
 
