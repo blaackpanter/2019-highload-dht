@@ -11,7 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ThreadLocalRandom;
 
 public final class GeneratorUtil {
-    private static final String string = "\r\n";
+    private static final String STRING = "\r\n";
 
     private GeneratorUtil() {
     }
@@ -32,14 +32,14 @@ public final class GeneratorUtil {
         final ByteArrayOutputStream request = new ByteArrayOutputStream();
         try (Writer writer = new OutputStreamWriter(request, StandardCharsets.US_ASCII)) {
             writer.write("PUT /v0/entity?id=" + key + " HTTP/1.1\r\n");
-            writer.write("Content-Length: " + value.length + string);
-            writer.write(string);
+            writer.write("Content-Length: " + value.length + STRING);
+            writer.write(STRING);
         }
         request.write(value);
         out.write(Integer.toString(request.size()).getBytes(StandardCharsets.US_ASCII));
         out.write(" put\n".getBytes(StandardCharsets.US_ASCII));
         request.writeTo(out);
-        out.write(string.getBytes(StandardCharsets.US_ASCII));
+        out.write(STRING.getBytes(StandardCharsets.US_ASCII));
     }
 
     static void get(@NotNull final OutputStream out,
@@ -47,11 +47,11 @@ public final class GeneratorUtil {
         final ByteArrayOutputStream request = new ByteArrayOutputStream();
         try (Writer writer = new OutputStreamWriter(request, StandardCharsets.US_ASCII)) {
             writer.write("GET /v0/entity?id=" + key + " HTTP/1.1\r\n");
-            writer.write(string);
+            writer.write(STRING);
         }
         out.write(Integer.toString(request.size()).getBytes(StandardCharsets.US_ASCII));
         out.write(" get\n".getBytes(StandardCharsets.US_ASCII));
         request.writeTo(out);
-        out.write(string.getBytes(StandardCharsets.US_ASCII));
+        out.write(STRING.getBytes(StandardCharsets.US_ASCII));
     }
 }
