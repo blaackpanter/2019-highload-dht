@@ -1,16 +1,21 @@
 package ru.mail.polis.tank;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.FileOutputStream;
 import java.io.IOException;
 
-public final class TaskOne {
+final class TaskOne {
+
+    private static final Logger log = LoggerFactory.getLogger(TaskOne.class);
 
     private TaskOne() {
     }
 
     static void main(final String[] args) throws IOException {
         if (args.length != 0) {
-            System.out.println("No need to add params");
+            log.info("No need to add params");
         }
         final int count = 1000000;
         final int valueLength = 256;

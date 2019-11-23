@@ -1,5 +1,8 @@
 package ru.mail.polis.tank;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -8,14 +11,16 @@ import java.util.Random;
 
 import static ru.mail.polis.tank.GeneratorUtil.randomKey;
 
-public final class TaskFive {
+final class TaskFive {
+
+    private static final Logger log = LoggerFactory.getLogger(TaskThree.class);
 
     private TaskFive() {
     }
 
     static void main(final String[] args) throws IOException {
         if (args.length != 0) {
-            System.out.println("No need to add params");
+            log.info("No need to add params");
         }
         final int count = 1000000;
         final int valueLength = 256;
