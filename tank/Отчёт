@@ -1,0 +1,24 @@
+Яндекс почему-то удалил отчёт, где была стрельба, чтобы найти мах число запросов put в секунду, но оно было примерно 3000 rps
+
+https://overload.yandex.net/230088#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574454940&slider_end=1574455240 - Task1 line(1, 2000, 1m) const(2000, 4m)
+
+https://overload.yandex.net/230117#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574498187&slider_end=1574498487 - Task2 line(1, 2000, 1m) const(2000, 4m)
+
+https://overload.yandex.net/230177#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574515266&slider_end=1574515565 - Это заполнение Dao  данными, чтобы потом стрелять Get
+
+https://overload.yandex.net/230179#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574515779&slider_end=1574515840 - Максимальное число запросов get 900
+
+https://overload.yandex.net/230183#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574516174&slider_end=1574516474 - Task3 line(1, 500, 1m) const(500, 4m)
+
+https://overload.yandex.net/230419#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574538063&slider_end=1574538363 - Это заполнение Dao  данными, чтобы потом стрелять Get
+
+https://overload.yandex.net/230429#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574538448&slider_end=1574538528 - Максимальное число запросов get 1100, до которого было все нормально
+
+https://overload.yandex.net/230430#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574538572&slider_end=1574538872 - Task4 line(1, 700, 1m) const(700, 4m)
+
+https://overload.yandex.net/230437#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574538933&slider_end=1574539129 - Максимальное число запросов get и put 3200, до которого было все нормально
+
+https://overload.yandex.net/230440#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574539188&slider_end=1574539488 - Task5 line(1, 2000, 1m) const(2000, 4m)
+
+
+

@@ -11,7 +11,10 @@ public final class TaskTwo {
     private TaskTwo() {
     }
 
-    static void main(final String[] varargs) throws IOException {
+    static void main(final String[] args) throws IOException {
+        if (args.length != 0) {
+            System.out.println("No need to add params");
+        }
         final int count = 1000000;
         final int valueLength = 256;
         final Random random = new Random();
