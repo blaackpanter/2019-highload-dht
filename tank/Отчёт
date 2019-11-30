@@ -1,24 +1,36 @@
 Яндекс почему-то удалил отчёт, где была стрельба, чтобы найти мах число запросов put в секунду, но оно было примерно 3000 rps
+Отчёт по первой стрельбе прогрузился
+https://overload.yandex.net/230080#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574453798&slider_end=1574453986&compress_ratio=1 - Максимальное число запросов put 3000
+На 3100 запросах начали приходить коды ошибок 504 (Not Enough Replicas).
 
 https://overload.yandex.net/230088#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574454940&slider_end=1574455240 - Task1 line(1, 2000, 1m) const(2000, 4m)
+95% всех ответов получены быстрее чем за 1 ms, 99% - 5 ms  (см. вкладку table). На все отправленные запросы были получены ответы.
 
 https://overload.yandex.net/230117#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574498187&slider_end=1574498487 - Task2 line(1, 2000, 1m) const(2000, 4m)
+95% всех ответов получены быстрее чем за 3 ms, 99% - 16 ms  (см. вкладку table). Время ответа увеличилось незначительно.
 
 https://overload.yandex.net/230177#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574515266&slider_end=1574515565 - Это заполнение Dao  данными, чтобы потом стрелять Get
+95% всех ответов получены быстрее чем за 96 ms, 99% - 175 ms  (см. вкладку table). Возможно, время ответа увеличилось из-за лишних открытых приложений (Safari, IDEA), но в итоге все необходимые данные были загружены в DAO, чтобы потом стрелять GET запросами.
 
-https://overload.yandex.net/230179#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574515779&slider_end=1574515840 - Максимальное число запросов get 900
+https://overload.yandex.net/230178#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574515616&slider_end=1574515649 - Максимальное число запросов get 900
+После этого начали приходить коды ошибок 504 (Not Enough Replicas), а на сервере в консоли были ошибки Timeout Exception. Время ответа кластеров было больше 1 секунды.
 
 https://overload.yandex.net/230183#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574516174&slider_end=1574516474 - Task3 line(1, 500, 1m) const(500, 4m)
+95% всех ответов получены быстрее чем за 2 ms, 99% - 12 ms  (см. вкладку table).
 
 https://overload.yandex.net/230419#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574538063&slider_end=1574538363 - Это заполнение Dao  данными, чтобы потом стрелять Get
+95% всех ответов получены быстрее чем за 1 ms, 99% - 9 ms  (см. вкладку table).
 
 https://overload.yandex.net/230429#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574538448&slider_end=1574538528 - Максимальное число запросов get 1100, до которого было все нормально
+На 1100 запросах в секунду время ответа  увеличилось, и была получена только половина ответов.
 
 https://overload.yandex.net/230430#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574538572&slider_end=1574538872 - Task4 line(1, 700, 1m) const(700, 4m)
+95% всех ответов получены быстрее чем за 3 ms, 99% - 9 ms  (см. вкладку table). Количество необходимых потоков для поддержания нагрузки было около 10.
 
 https://overload.yandex.net/230437#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574538933&slider_end=1574539129 - Максимальное число запросов get и put 3200, до которого было все нормально
+После этого начали приходить коды ошибок 504 (Not Enough Replicas), а на сервере в консоли были ошибки Timeout Exception. Время ответа кластеров было больше 1 секунды.
 
 https://overload.yandex.net/230440#tab=test_data&tags=&plot_groups=main&machines=&metrics=&slider_start=1574539188&slider_end=1574539488 - Task5 line(1, 2000, 1m) const(2000, 4m)
-
+95% всех ответов получены быстрее чем за 6 ms, 99% - 28 ms (см. вкладку table).
 
 
